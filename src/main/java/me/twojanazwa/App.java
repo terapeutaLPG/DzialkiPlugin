@@ -14,15 +14,12 @@ public class App extends JavaPlugin {
     public void onEnable() {
         dzialkaCommand = new DzialkaCommand(this);
 
-// ——— REJESTRACJA KOMENDY I TAB‐COMPLETERA ———
         if (getCommand("dzialka") != null) {
             getCommand("dzialka").setExecutor(dzialkaCommand);
             getCommand("dzialka").setTabCompleter(dzialkaCommand);
         } else {
             getLogger().warning("Command 'dzialka' is not defined in plugin.yml!");
         }
-
-        // ——— REJESTRACJA EVENTÓW ———
         Bukkit.getPluginManager().registerEvents(dzialkaCommand, this);
         Bukkit.getPluginManager().registerEvents(
                 new DzialkaPvPListener(dzialkaCommand),

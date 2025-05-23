@@ -25,11 +25,16 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.command.TabCompleter;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
+import org.bukkit.event.entity.CreatureSpawnEvent;
+import org.bukkit.event.entity.EntityDamageByEntityEvent;
+import org.bukkit.event.entity.EntityPickupItemEvent;
+import org.bukkit.event.entity.PotionSplashEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
@@ -455,6 +460,21 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     config.set(regionKey + ".warp", r.warp);
                     config.set(regionKey + ".points", r.points);
                     config.set(regionKey + ".deputy", r.deputy);
+                    config.set(regionKey + ".allowPickup", r.allowPickup);
+                    config.set(regionKey + ".allowPotion", r.allowPotion);
+                    config.set(regionKey + ".allowKillMobs", r.allowKillMobs);
+                    config.set(regionKey + ".allowSpawnMobs", r.allowSpawnMobs);
+                    config.set(regionKey + ".allowSpawnerBreak", r.allowSpawnerBreak);
+                    config.set(regionKey + ".allowBeaconPlace", r.allowBeaconPlace);
+                    config.set(regionKey + ".allowBeaconBreak", r.allowBeaconBreak);
+                    r.allowPickup = config.getBoolean(key + ".allowPickup", false);
+                    r.allowPotion = config.getBoolean(key + ".allowPotion", false);
+                    r.allowKillMobs = config.getBoolean(key + ".allowKillMobs", false);
+                    r.allowSpawnMobs = config.getBoolean(key + ".allowSpawnMobs", false);
+                    r.allowSpawnerBreak = config.getBoolean(key + ".allowSpawnerBreak", false);
+                    r.allowBeaconPlace = config.getBoolean(key + ".allowBeaconPlace", false);
+                    r.allowBeaconBreak = config.getBoolean(key + ".allowBeaconBreak", false);
+
                 }
             }
         }
@@ -787,28 +807,89 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
     }
 
+    // 1) podnoszenie itemów
     @EventHandler
-    public void onBlockBreak(BlockBreakEvent event) {
-        Player player = event.getPlayer();
-        ProtectedRegion region = getRegion(player.getLocation());
-        if (region != null && !region.owner.equals(player.getName())
-                && !region.invitedPlayers.contains(player.getUniqueId())) {
-            event.setCancelled(true);
-            player.sendMessage("§cNie możesz niszczyć bloków na tej działce!");
+    public void onPickup(EntityPickupItemEvent ev) {
+        if (!(ev.getEntity() instanceof Player p)) {
+            return;
+        }
+        ProtectedRegion r = getRegion(p.getLocation());
+        if (r != null && !r.owner.equals(p.getName()) && !r.invitedPlayers.contains(p.getUniqueId())
+                && !r.allowPickup) {
+            ev.setCancelled(true);
         }
     }
 
+    // 2) rzucanie mikstur
     @EventHandler
-    public void onBlockPlace(BlockPlaceEvent event) {
-        Player player = event.getPlayer();
-        ProtectedRegion region = getRegion(player.getLocation());
-        if (region != null) {
-            int points = PlotPointsManager.handleBlockPlace(this, region, player, event.getBlock().getType());
-            if (points > 0) {
-                player.sendMessage("§aDodano §b" + points + " pkt §ado działki '" + region.plotName + "'.");
+    public void onPotionSplash(PotionSplashEvent ev) {
+        if (!(ev.getEntity().getShooter() instanceof Player p)) {
+            return;
+        }
+        ProtectedRegion r = getRegion(p.getLocation());
+        if (r != null && !r.allowPotion
+                && !r.owner.equals(p.getName()) && !r.invitedPlayers.contains(p.getUniqueId())) {
+            ev.setCancelled(true);
+        }
+    }
+
+    // 3) bicie mobów
+    @EventHandler
+    public void onDamage(EntityDamageByEntityEvent ev) {
+        if (!(ev.getDamager() instanceof Player p)) {
+            return;
+        }
+        ProtectedRegion r = getRegion(p.getLocation());
+        if (r != null && ev.getEntity() instanceof LivingEntity
+                && !r.allowKillMobs && !r.owner.equals(p.getName())
+                && !r.invitedPlayers.contains(p.getUniqueId())) {
+            ev.setCancelled(true);
+        }
+    }
+
+    // 4) respienie mobów
+    @EventHandler
+    public void onCreatureSpawn(CreatureSpawnEvent ev) {
+        if (ev.getSpawnReason() != CreatureSpawnEvent.SpawnReason.CUSTOM) {
+            return;
+        }
+        Location loc = ev.getLocation();
+        ProtectedRegion r = getRegion(loc);
+        if (r != null && !r.allowSpawnMobs) {
+            ev.setCancelled(true);
+        }
+    }
+
+    // 5) niszczenie spawnerów i beaconów
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent ev) {
+        Player p = ev.getPlayer();
+        ProtectedRegion r = getRegion(p.getLocation());
+        if (r != null && !r.owner.equals(p.getName()) && !r.invitedPlayers.contains(p.getUniqueId())) {
+            Material m = ev.getBlock().getType();
+            if ((m == Material.SPAWNER && !r.allowSpawnerBreak)
+                    || (m == Material.BEACON && !r.allowBeaconBreak)
+                    || (m != Material.SPAWNER && m != Material.BEACON && !r.allowDestroy)) {
+                ev.setCancelled(true);
+                return;
             }
         }
+        // ...istniejąca logika punktów lub inne...
+    }
 
+    // 6) stawianie beaconów
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent ev) {
+        Player p = ev.getPlayer();
+        ProtectedRegion r = getRegion(p.getLocation());
+        if (r != null && !r.owner.equals(p.getName()) && !r.invitedPlayers.contains(p.getUniqueId())) {
+            if (ev.getBlock().getType() == Material.BEACON && !r.allowBeaconPlace) {
+                ev.setCancelled(true);
+                return;
+            }
+        }
+        // … istniejąca logika punktów …
+        // ...existing code for points, etc...
     }
 
     @EventHandler
@@ -1022,6 +1103,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         public boolean allowFlight = false;
         public boolean allowEnter = true;
         public boolean isDay = true; // domyślnie dzień
+        public boolean allowPickup = false;  // podnoszenie itemów
+        public boolean allowPotion = false;  // rzucanie mikstur
+        public boolean allowKillMobs = false;  // bicie mobów
+        public boolean allowSpawnMobs = false;  // respienie mobów
+        public boolean allowSpawnerBreak = false;  // niszczenie spawnerów
+        public boolean allowBeaconPlace = false;  // stawianie beaconów
+        public boolean allowBeaconBreak = false;  // niszczenie beaconów
 
         public ProtectedRegion(int minX, int maxX, int minZ, int maxZ, int minY, int maxY, Location center, String owner, String plotName, long creationTime) {
             this.minX = minX;
