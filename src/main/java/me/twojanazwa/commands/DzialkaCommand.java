@@ -57,6 +57,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         this.plugin = plugin;
     }
 
+    /**
+     * Bezpieczne porównanie nazw działek (ignoruje null-e)
+     */
+    private static boolean samePlotName(String a, String b) {
+        return a != null && b != null && a.equalsIgnoreCase(b);
+    }
+
     @Override
     public boolean onCommand(CommandSender sender, Command cmd, String label, String[] args) {
         try {
@@ -108,7 +115,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     // 3) Sprawdź unikalność nazwy (pomijamy regiony bez nazwy)
                     for (List<ProtectedRegion> allList : dzialki.values()) {
                         for (ProtectedRegion r : allList) {
-                            if (r.plotName != null && r.plotName.equalsIgnoreCase(plotName)) {
+                            if (samePlotName(r.plotName, plotName)) {
                                 gracz.sendMessage("§cDziałka o nazwie '" + plotName + "' już istnieje!");
                                 return true;
                             }
@@ -152,7 +159,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
                     ProtectedRegion toRemove = null;
                     for (ProtectedRegion r : playerPlots) {
-                        if (r.plotName.equalsIgnoreCase(plotName) && r.owner.equals(gracz.getName())) {
+                        if (samePlotName(r.plotName, plotName) && r.owner.equals(gracz.getName())) {
                             toRemove = r;
                             break;
                         }
@@ -198,7 +205,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     String nazwa = args[1];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion target = playerPlots.stream()
-                            .filter(r -> r.plotName.equalsIgnoreCase(nazwa))
+                            .filter(r -> samePlotName(r.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (target == null) {
                         gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
@@ -228,7 +235,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     String nazwa = args[1];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> samePlotName(p.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (r == null) {
                         gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
@@ -245,7 +252,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     String nazwa = args[1];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> samePlotName(p.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (r == null || r.warp == null) {
                         gracz.sendMessage("§cBrak ustawionego warpu dla działki '" + nazwa + "'.");
@@ -264,7 +271,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
 
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName != null && p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> samePlotName(p.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (r == null) {
                         gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
@@ -293,7 +300,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     String nazwa = args[1], nick = args[2];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> samePlotName(p.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (r == null) {
                         gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
@@ -317,7 +324,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     String nazwa = args[1];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> samePlotName(p.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (r == null || !r.invitedPlayers.contains(gracz.getUniqueId())) {
                         gracz.sendMessage("§cNie jesteś zaproszony na działkę '" + nazwa + "'.");
@@ -339,7 +346,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     String nazwa = args[1], nick = args[2];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> samePlotName(p.plotName, nazwa))
                             .findFirst().orElse(null);
                     if (r == null) {
                         gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
@@ -387,10 +394,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     List<ProtectedRegion> playerPlots = dzialki
                             .getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     for (ProtectedRegion r : playerPlots) {
-                        if (r.plotName == null) {
-                            continue;
+                        if (r.plotName != null) {
+                            completions.add(r.plotName);
                         }
-                        completions.add(r.plotName);
                     }
                 }
                 case "zapros", "zastepca" -> {
@@ -430,6 +436,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             if (regionList != null) {
                 for (int i = 0; i < regionList.size(); i++) {
                     ProtectedRegion r = regionList.get(i);
+                    // 3. savePlots() – pomiń uszkodzony region
+                    if (r.plotName == null) {
+                        continue;
+                    }
                     String regionKey = key + "." + i;
                     config.set(regionKey + ".minX", r.minX);
                     config.set(regionKey + ".maxX", r.maxX);
@@ -466,6 +476,11 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         for (String key : config.getKeys(false)) {
             UUID uuid = UUID.fromString(key);
             String plotName = config.getString(key + ".plotName");
+            // 2. Pomijaj regiony bez nazwy
+            if (plotName == null || plotName.isBlank()) {
+                plugin.getLogger().warning("Pomijam region bez nazwy (klucz: " + key + ")");
+                continue;
+            }
             int minX = config.getInt(key + ".minX");
             int maxX = config.getInt(key + ".maxX");
             int minZ = config.getInt(key + ".minZ");
@@ -538,7 +553,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     private ProtectedRegion getRegionByName(String plotName) {
         for (List<ProtectedRegion> list : dzialki.values()) {
             for (ProtectedRegion r : list) {
-                if (r.plotName.equalsIgnoreCase(plotName)) {
+                if (samePlotName(r.plotName, plotName)) {
                     return r;
                 }
             }

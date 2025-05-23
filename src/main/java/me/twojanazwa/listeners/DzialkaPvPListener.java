@@ -97,6 +97,9 @@ public class DzialkaPvPListener implements Listener {
         if (r1 == null || r2 == null) {
             return false;
         }
-        return r1.plotName.equalsIgnoreCase(r2.plotName);
+        // Użyj bezpiecznego porównania nazw
+        return r1.plotName != null && r2.plotName != null && r1.plotName.equalsIgnoreCase(r2.plotName);
+        // lub jeśli chcesz użyć static z DzialkaCommand:
+        // return me.twojanazwa.commands.DzialkaCommand.samePlotName(r1.plotName, r2.plotName);
     }
 }
