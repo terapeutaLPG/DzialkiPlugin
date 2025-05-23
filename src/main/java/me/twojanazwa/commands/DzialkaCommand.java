@@ -2,9 +2,11 @@ package me.twojanazwa.commands;
 
 import java.io.File;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -581,80 +583,82 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         return null;
     }
 
-    private void openPanel(ProtectedRegion region, Player player) {
-        // Tworzymy inventory 27-slotowe
-        Inventory inv = Bukkit.createInventory(null, 27, "Panel Działki: " + region.plotName);
+    // --- wklej poniżej w klasie DzialkaCommand, zamiast starego openPanel(...) ---
+    private void openPanel(ProtectedRegion r, Player p) {
+        Inventory inv = Bukkit.createInventory(null, 27, "Panel Działki: " + r.plotName);
 
-        // 1) TOGGLERY UPRAWNIEŃ
-        inv.setItem(3, toggleItem(region.allowBuild, "§aBudowanie"));
-        inv.setItem(5, toggleItem(region.allowDestroy, "§cNiszczenie"));
-        inv.setItem(7, toggleItem(region.allowChest, "§6Skrzynki"));
-        inv.setItem(9, toggleItem(region.allowFlight, "§bLatanie"));
-        inv.setItem(17, toggleItem(region.allowEnter, "§dWejście"));
-
-        // 2) ZASADY PRZYZNAWANIA PUNKTÓW (slot 10)
-        ItemStack pts = new ItemStack(Material.EMERALD);
-        ItemMeta ptsMeta = pts.getItemMeta();
-        ptsMeta.setDisplayName("§bZasady przyznawania punktów");
-        ptsMeta.setLore(List.of(
-                "§72 pkt – postawienie bloku",
-                "§71 pkt – interakcja gościa",
-                "§7… dodatkowe zasady …"
+        // rząd 1: podstawowe info + teleport + role
+        inv.setItem(10, item(Material.OAK_SIGN,
+                "§dPodstawowe informacje",
+                List.of(
+                        "§7Założyciel: §e" + r.owner,
+                        "§7Data utworzenia: §e" + new SimpleDateFormat("dd/MM/yyyy HH:mm")
+                                .format(new Date(r.creationTime))
+                )
         ));
-        pts.setItemMeta(ptsMeta);
-        inv.setItem(10, pts);
-
-        // 3) TELEPORT (slot 11)
-        ItemStack tp = new ItemStack(Material.ENDER_PEARL);
-        ItemMeta tpMeta = tp.getItemMeta();
-        tpMeta.setDisplayName("§aTeleportuj na działkę");
-        tp.setItemMeta(tpMeta);
-        inv.setItem(11, tp);
-
-        // 4) ZAKŁADKA „Zaproszeni gracze” (slot 12)
-        ItemStack invitesTab = new ItemStack(Material.PLAYER_HEAD);
-        SkullMeta im = (SkullMeta) invitesTab.getItemMeta();
-        im.setOwningPlayer(Bukkit.getOfflinePlayer(player.getUniqueId()));
-        im.setDisplayName("§eZaproszeni gracze");
-        im.setLore(List.of("§7Kliknij, aby zobaczyć listę zaproszonych"));
-        invitesTab.setItemMeta(im);
-        inv.setItem(12, invitesTab);
-
-        // 5) HEADY ZAPROSZONYCH (sloty 19–25)
-        int slot = 19;
-        for (UUID uuid : region.invitedPlayers) {
-            if (slot > 25) {
-                break;
-            }
-            OfflinePlayer off = Bukkit.getOfflinePlayer(uuid);
-            ItemStack head = new ItemStack(Material.PLAYER_HEAD);
-            SkullMeta hm = (SkullMeta) head.getItemMeta();
-            hm.setOwningPlayer(off);
-            hm.setDisplayName("§a" + off.getName());
-            hm.setLore(List.of("§7Kliknij, aby ustawić zastępcę"));
-            head.setItemMeta(hm);
-            inv.setItem(slot++, head);
+        inv.setItem(11, item(Material.EMERALD,
+                "§bPunkty działki",
+                List.of("§7Aktualnie: §a" + r.points)
+        ));
+        inv.setItem(12, item(Material.ENDER_PEARL, "§aTeleportuj na środek"));
+        inv.setItem(13, head(r.owner, "Założyciel"));
+        if (r.deputy != null) {
+            OfflinePlayer d = Bukkit.getOfflinePlayer(r.deputy);
+            inv.setItem(14, head(d.getName(), "Zastępca"));
+        } else {
+            inv.setItem(14, item(Material.GRAY_WOOL, "§7Brak zastępcy"));
         }
 
-        // Otwieramy panel
-        player.openInventory(inv);
+        // rząd 2: togglery uprawnień
+        inv.setItem(19, toggleItem(r.allowBuild, "§aKładzenie bloków"));
+        inv.setItem(20, toggleItem(r.allowDestroy, "§cNiszczenie bloków"));
+        inv.setItem(21, toggleItem(r.allowChest, "§6Otwieranie skrzyń"));
+        inv.setItem(22, toggleItem(r.allowPickup, "§ePodnoszenie itemów"));
+        inv.setItem(23, toggleItem(r.allowFlight, "§bLatanie"));
+        inv.setItem(24, toggleItem(r.allowKillMobs, "§cBicie mobów"));
+        inv.setItem(25, toggleItem(r.allowSpawnMobs, "§dRespienie mobów"));
+
+        p.openInventory(inv);
+
     }
 
-    /**
-     * Tworzy ItemStack z zielonym albo czerwonym concrete + odpowiednią nazwą i
-     * lore.
-     */
+// === POD TE METODĄ openPanel DODAJ HELPER-Y: ===
+    private ItemStack item(Material mat, String name) {
+        return item(mat, name, Collections.emptyList());
+    }
+
+    private ItemStack item(Material mat, String name, List<String> lore) {
+        ItemStack is = new ItemStack(mat);
+        ItemMeta m = is.getItemMeta();
+        m.setDisplayName(name);
+        if (!lore.isEmpty()) {
+            m.setLore(lore);
+        }
+        is.setItemMeta(m);
+        return is;
+    }
+
+    private ItemStack head(String playerName, String role) {
+        OfflinePlayer off = Bukkit.getOfflinePlayer(playerName);
+        ItemStack skull = new ItemStack(Material.PLAYER_HEAD);
+        SkullMeta m = (SkullMeta) skull.getItemMeta();
+        m.setOwningPlayer(off);
+        m.setDisplayName("§e" + playerName);
+        m.setLore(List.of("§7Rola: §f" + role, "§7Kliknij, aby..."));
+        skull.setItemMeta(m);
+        return skull;
+    }
+
+    // zamiast Material.GREEN_CONCRETE / RED_CONCRETE
     private ItemStack toggleItem(boolean on, String name) {
-        Material mat = on ? Material.GREEN_CONCRETE : Material.RED_CONCRETE;
+        Material mat = on ? Material.LIME_WOOL : Material.RED_WOOL;
         ItemStack it = new ItemStack(mat);
         ItemMeta m = it.getItemMeta();
-        if (m != null) {
-            m.setDisplayName(name + ": " + (on ? "§aWŁ." : "§cWYŁ."));
-            m.setLore(Collections.singletonList(
-                    "§7Kliknij, aby " + (on ? "zablokować" : "odblokować")
-            ));
-            it.setItemMeta(m);
-        }
+        m.setDisplayName(name + ": " + (on ? "§aWŁ." : "§cWYŁ."));
+        m.setLore(Collections.singletonList(
+                "§7Kliknij, aby " + (on ? "zablokować" : "odblokować")
+        ));
+        it.setItemMeta(m);
         return it;
     }
 
@@ -673,6 +677,45 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
         // Zablokuj wyciąganie itemów
         event.setCancelled(true);
+
+        if (title.startsWith("Panel Działki: ")) {
+            ItemStack it = event.getCurrentItem();
+            if (it == null || !it.hasItemMeta()) {
+                return;
+            }
+            String name = ChatColor.stripColor(it.getItemMeta().getDisplayName());
+            String plotName = title.substring("Panel Działki: ".length());
+            ProtectedRegion r = getRegionByName(plotName);
+
+            // teleportacja na środek działki
+            if (name.equals("Teleportuj na środek")) {
+                p.teleport(r.center.clone().add(0.5, 1, 0.5));
+                p.sendMessage("§aTeleport na środek działki!");
+                return;
+            }
+
+            // togglery flag
+            if (name.startsWith("Kładzenie bloków")) {
+                r.allowBuild = !r.allowBuild;
+            } else if (name.startsWith("Niszczenie bloków")) {
+                r.allowDestroy = !r.allowDestroy;
+            } else if (name.startsWith("Otwieranie skrzyń")) {
+                r.allowChest = !r.allowChest;
+            } else if (name.startsWith("Podnoszenie itemów")) {
+                r.allowPickup = !r.allowPickup;
+            } else if (name.startsWith("Latanie")) {
+                r.allowFlight = !r.allowFlight;
+            } else if (name.startsWith("Bicie mobów")) {
+                r.allowKillMobs = !r.allowKillMobs;
+            } else if (name.startsWith("Respienie mobów")) {
+                r.allowSpawnMobs = !r.allowSpawnMobs;
+            }
+
+            // zapisz i odśwież GUI
+            savePlots();
+            openPanel(r, p);
+            return;
+        }
 
         ItemStack it = event.getCurrentItem();
         if (it == null || !it.hasItemMeta()) {
