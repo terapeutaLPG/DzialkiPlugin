@@ -1,0 +1,19 @@
+name: DzialkiPlugin
+version: 1.0
+main: me.twojanazwa.App # <- musisz tu mieć klasę App, a nie Main
+api-version: 1.16
+
+commands:
+  dzialka:
+    description: Główna komenda działek
+    usage: /dzialka <podkomenda> [args]
+    aliases: [dzialki]
+
+permissions:
+  dzialkiplugin.stworz:
+    description: Pozwala tworzyć działki
+    default: op
+
+  dzialkiplugin.zastepca:
+    description: Pozwala ustawiać zastępcę działki
+    default: op
