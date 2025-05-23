@@ -262,8 +262,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     }
                     String nazwa = args[1];
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
+
                     ProtectedRegion r = playerPlots.stream()
-                            .filter(p -> p.plotName.equalsIgnoreCase(nazwa))
+                            .filter(p -> p.plotName != null && p.plotName.equalsIgnoreCase(nazwa))
                             .findFirst().orElse(null);
                     if (r == null) {
                         gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
@@ -386,6 +387,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     List<ProtectedRegion> playerPlots = dzialki
                             .getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     for (ProtectedRegion r : playerPlots) {
+                        if (r.plotName == null) {
+                            continue;
+                        }
                         completions.add(r.plotName);
                     }
                 }
@@ -452,36 +456,16 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
     }
 
-    private boolean isColliding(ProtectedRegion newRegion) {
-        for (List<ProtectedRegion> sublist : dzialki.values()) {
-            for (ProtectedRegion region : sublist) {
-                if (newRegion.intersects(region)) {
-                    return true;
-                }
-            }
-        }
-        return false;
-    }
-
     public void loadPlots() {
         File file = new File(plugin.getDataFolder(), "plots.yml");
         if (!file.exists()) {
             plugin.getLogger().info("Plik plots.yml nie istnieje. Nie załadowano żadnych działek.");
             return;
-
         }
-
         YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
-
         for (String key : config.getKeys(false)) {
             UUID uuid = UUID.fromString(key);
             String plotName = config.getString(key + ".plotName");
-
-            if (plotName != null && plotName.equalsIgnoreCase("dddddd")) {
-                plugin.getLogger().warning("Pomijanie działki o nazwie 'dddddd'.");
-                continue;
-            }
-
             int minX = config.getInt(key + ".minX");
             int maxX = config.getInt(key + ".maxX");
             int minZ = config.getInt(key + ".minZ");
@@ -500,21 +484,28 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     }
                 }
             }
-            // invitedPlayers is already initialized as a new ArrayList<>(), no need for null check
             Location warp = config.getLocation(key + ".warp");
             int points = config.getInt(key + ".points");
             UUID deputy = (UUID) config.get(key + ".deputy");
-
             plugin.getLogger().info(String.format("Ładowanie działki: %s (Właściciel: %s)", plotName, owner));
-
             ProtectedRegion region = new ProtectedRegion(minX, maxX, minZ, maxZ, minY, maxY, center, owner, plotName, creationTime);
             region.invitedPlayers.addAll(invitedPlayers);
             region.warp = warp;
             region.points = points;
             region.deputy = deputy;
             dzialki.computeIfAbsent(uuid, k -> new ArrayList<>()).add(region);
-
         }
+    }
+
+    private boolean isColliding(ProtectedRegion newRegion) {
+        for (List<ProtectedRegion> sublist : dzialki.values()) {
+            for (ProtectedRegion region : sublist) {
+                if (newRegion.intersects(region)) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public ProtectedRegion getRegion(Location loc) {

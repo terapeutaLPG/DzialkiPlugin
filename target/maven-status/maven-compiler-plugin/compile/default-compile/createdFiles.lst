@@ -5,5 +5,4 @@ me\twojanazwa\commands\DzialkaCommand.class
 me\twojanazwa\listeners\DzialkaPvPListener.class
 me\twojanazwa\points\PlotPointsManager$1.class
 me\twojanazwa\commands\DzialkaCommand$2.class
-me\twojanazwa\Main.class
 me\twojanazwa\commands\DzialkaCommand$ProtectedRegion.class
