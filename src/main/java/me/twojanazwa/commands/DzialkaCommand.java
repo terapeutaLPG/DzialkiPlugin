@@ -948,8 +948,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                             : "§cNiszczenie beaconów zablokowane");
                 } else if (name.contains("Przełącz dzień/noc")) {
                     region.isDay = !region.isDay;
-                    long t = region.isDay ? 1000L : 13000L;
-                    p.setPlayerTime(t, false);
+
+                    // Aktualizuj czas dla wszystkich graczy na działce
+                    updateTimeForPlayersInRegion(region, p);
+
                     p.sendMessage(region.isDay
                             ? "§aWłączyłeś dzień na tej działce."
                             : "§aWłączyłeś noc na tej działce.");
@@ -1713,5 +1715,27 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             default ->
                 false;
         };
+    }
+
+    // === HELPER DO AKTUALIZACJI CZASU DLA WSZYSTKICH GRACZY NA DZIAŁCE ===
+    private void updateTimeForPlayersInRegion(ProtectedRegion region, Player triggeredBy) {
+        long t = region.isDay ? 1000L : 13000L;
+
+        // Znajdź wszystkich graczy na tym świecie i sprawdź czy są na tej działce
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            if (player.getWorld().equals(region.center.getWorld())) {
+                Location playerLoc = player.getLocation();
+                if (region.contains(playerLoc.getBlockX(), playerLoc.getBlockY(), playerLoc.getBlockZ())) {
+                    player.setPlayerTime(t, false);
+
+                    // Powiadom gracza o zmianie czasu (oprócz tego który przełączył)
+                    if (!player.equals(triggeredBy)) {
+                        player.sendMessage(region.isDay
+                                ? "§eWłączono dzień na tej działce"
+                                : "§eWłączono noc na tej działce");
+                    }
+                }
+            }
+        }
     }
 }
