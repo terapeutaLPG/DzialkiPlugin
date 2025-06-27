@@ -651,6 +651,25 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         return null;
     }
 
+    // === METODA DO SPRAWDZANIA CZY GRACZ JEST W POBLIŻU DZIAŁKI ===
+    public ProtectedRegion getNearbyRegion(Location loc, int radius) {
+        for (List<ProtectedRegion> sublist : dzialki.values()) {
+            for (ProtectedRegion region : sublist) {
+                // Sprawdź czy gracz jest w promieniu działki (rozszerzona granica)
+                int expandedMinX = region.minX - radius;
+                int expandedMaxX = region.maxX + radius;
+                int expandedMinZ = region.minZ - radius;
+                int expandedMaxZ = region.maxZ + radius;
+
+                if (loc.getBlockX() >= expandedMinX && loc.getBlockX() <= expandedMaxX
+                        && loc.getBlockZ() >= expandedMinZ && loc.getBlockZ() <= expandedMaxZ) {
+                    return region;
+                }
+            }
+        }
+        return null;
+    }
+
     public boolean isInAnyPlot(Player player) {
         Location loc = player.getLocation();
         for (List<ProtectedRegion> list : dzialki.values()) {

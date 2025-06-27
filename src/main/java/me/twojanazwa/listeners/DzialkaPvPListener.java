@@ -61,6 +61,11 @@ public class DzialkaPvPListener implements Listener {
         ProtectedRegion currentRegion = dzialkaCommand.getRegion(to);
         ProtectedRegion previousRegion = dzialkaCommand.getRegion(from);
 
+        // Sprawdź czy gracz jest w pobliżu działki (promień 10 bloków)
+        ProtectedRegion nearbyRegion = dzialkaCommand.getNearbyRegion(to, 10);
+        ProtectedRegion previousNearbyRegion = dzialkaCommand.getNearbyRegion(from, 10);
+
+        // === OBSŁUGA WEJŚCIA/WYJŚCIA Z DZIAŁKI ===
         if (!regionsAreEqual(currentRegion, previousRegion)) {
             Bukkit.getLogger().info(String.format("[DzialkaPvPListener] Zmiana regionu gracza %s: poprzedni = %s, aktualny = %s",
                     player.getName(),
@@ -77,7 +82,6 @@ public class DzialkaPvPListener implements Listener {
                 player.setPlayerTime(t, false);
 
                 dzialkaCommand.showBossBar(currentRegion, player);
-                dzialkaCommand.scheduleBoundaryParticles(currentRegion, player);
             } else {
                 // Gracz opuścił działkę
                 player.sendMessage("§cOpuszczasz działkę.");
@@ -91,9 +95,22 @@ public class DzialkaPvPListener implements Listener {
                 if (bossBar != null) {
                     bossBar.setVisible(false);
                 }
-                if (previousRegion != null) {
-                    dzialkaCommand.stopParticles(previousRegion);
+            }
+        }        // === OBSŁUGA CZĄSTECZEK DLA POBLISKICH DZIAŁEK ===
+        if (!regionsAreEqual(nearbyRegion, previousNearbyRegion)) {
+            // Zatrzymaj poprzednie cząsteczki jeśli się oddala lub zmienia działkę
+            if (previousNearbyRegion != null && !regionsAreEqual(nearbyRegion, previousNearbyRegion)) {
+                dzialkaCommand.stopParticles(previousNearbyRegion);
+            }
+
+            // Uruchom nowe cząsteczki jeśli się zbliża do nowej działki
+            if (nearbyRegion != null && !regionsAreEqual(nearbyRegion, previousNearbyRegion)) {
+                // Tylko jeśli gracz NIE jest już na działce (żeby nie duplikować wiadomości)
+                if (currentRegion == null) {
+                    player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
+                            new TextComponent("§7Zbliżasz się do działki: §e" + nearbyRegion.plotName));
                 }
+                dzialkaCommand.scheduleBoundaryParticles(nearbyRegion, player);
             }
         }
     }
