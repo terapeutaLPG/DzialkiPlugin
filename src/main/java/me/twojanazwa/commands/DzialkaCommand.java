@@ -469,13 +469,6 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     config.set(regionKey + ".allowSpawnerBreak", r.allowSpawnerBreak);
                     config.set(regionKey + ".allowBeaconPlace", r.allowBeaconPlace);
                     config.set(regionKey + ".allowBeaconBreak", r.allowBeaconBreak);
-                    r.allowPickup = config.getBoolean(key + ".allowPickup", false);
-                    r.allowPotion = config.getBoolean(key + ".allowPotion", false);
-                    r.allowKillMobs = config.getBoolean(key + ".allowKillMobs", false);
-                    r.allowSpawnMobs = config.getBoolean(key + ".allowSpawnMobs", false);
-                    r.allowSpawnerBreak = config.getBoolean(key + ".allowSpawnerBreak", false);
-                    r.allowBeaconPlace = config.getBoolean(key + ".allowBeaconPlace", false);
-                    r.allowBeaconBreak = config.getBoolean(key + ".allowBeaconBreak", false);
 
                 }
             }
@@ -530,6 +523,16 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             region.warp = warp;
             region.points = points;
             region.deputy = deputy;
+
+            // Load permission settings
+            region.allowPickup = config.getBoolean(key + ".allowPickup", false);
+            region.allowPotion = config.getBoolean(key + ".allowPotion", false);
+            region.allowKillMobs = config.getBoolean(key + ".allowKillMobs", false);
+            region.allowSpawnMobs = config.getBoolean(key + ".allowSpawnMobs", false);
+            region.allowSpawnerBreak = config.getBoolean(key + ".allowSpawnerBreak", false);
+            region.allowBeaconPlace = config.getBoolean(key + ".allowBeaconPlace", false);
+            region.allowBeaconBreak = config.getBoolean(key + ".allowBeaconBreak", false);
+
             dzialki.computeIfAbsent(uuid, k -> new ArrayList<>()).add(region);
         }
     }
@@ -585,41 +588,66 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // --- wklej poniżej w klasie DzialkaCommand, zamiast starego openPanel(...) ---
     private void openPanel(ProtectedRegion r, Player p) {
-        Inventory inv = Bukkit.createInventory(null, 27, "Panel Działki: " + r.plotName);
+        Inventory inv = Bukkit.createInventory(null, 54, "Panel Działki: " + r.plotName);
 
-        // rząd 1: podstawowe info + teleport + role
-        inv.setItem(10, item(Material.OAK_SIGN,
+        // === SEKCJA INFORMACYJNA (góra, lewo) ===
+        inv.setItem(0, item(Material.OAK_SIGN,
                 "§dPodstawowe informacje",
                 List.of(
-                        "§7Założyciel: §e" + r.owner,
+                        "§7Właściciel: §e" + r.owner,
                         "§7Data utworzenia: §e" + new SimpleDateFormat("dd/MM/yyyy HH:mm")
-                                .format(new Date(r.creationTime))
+                                .format(new Date(r.creationTime)),
+                        "§7Punkty działki: §a" + r.points
                 )
         ));
-        inv.setItem(11, item(Material.EMERALD,
-                "§bPunkty działki",
-                List.of("§7Aktualnie: §a" + r.points)
-        ));
-        inv.setItem(12, item(Material.ENDER_PEARL, "§aTeleportuj na środek"));
-        inv.setItem(13, head(r.owner, "Założyciel"));
+
+        // === SEKCJA ROLOWA (góra, środek) ===
+        inv.setItem(4, head(r.owner, "Właściciel"));
         if (r.deputy != null) {
             OfflinePlayer d = Bukkit.getOfflinePlayer(r.deputy);
-            inv.setItem(14, head(d.getName(), "Zastępca"));
+            inv.setItem(5, head(d.getName(), "Zastępca"));
         } else {
-            inv.setItem(14, item(Material.GRAY_WOOL, "§7Brak zastępcy"));
+            inv.setItem(5, item(Material.GRAY_WOOL, "§7Brak zastępcy"));
         }
 
-        // rząd 2: togglery uprawnień
-        inv.setItem(19, toggleItem(r.allowBuild, "§aKładzenie bloków"));
-        inv.setItem(20, toggleItem(r.allowDestroy, "§cNiszczenie bloków"));
-        inv.setItem(21, toggleItem(r.allowChest, "§6Otwieranie skrzyń"));
-        inv.setItem(22, toggleItem(r.allowPickup, "§ePodnoszenie itemów"));
-        inv.setItem(23, toggleItem(r.allowFlight, "§bLatanie"));
-        inv.setItem(24, toggleItem(r.allowKillMobs, "§cBicie mobów"));
-        inv.setItem(25, toggleItem(r.allowSpawnMobs, "§dRespienie mobów"));
+        // === SEKCJA TELEPORTACJI (góra, prawo) ===
+        inv.setItem(8, item(Material.ENDER_PEARL, "§aTeleportuj na środek"));
+
+        // === SEPARATOR ===
+        for (int i = 9; i < 18; i++) {
+            inv.setItem(i, item(Material.GRAY_STAINED_GLASS_PANE, "§7▬▬▬ UPRAWNIENIA GLOBALNE ▬▬▬"));
+        }
+
+        // === UPRAWNIENIA GLOBALNE (środkowe rzędy) ===
+        // Pierwsza linia uprawnień
+        inv.setItem(18, toggleItem(r.allowBuild, "Stawianie bloków", "Pozwala nieznajomym graczom stawiać bloki"));
+        inv.setItem(19, toggleItem(r.allowDestroy, "Niszczenie bloków", "Pozwala nieznajomym graczom niszczyć bloki"));
+        inv.setItem(20, toggleItem(r.allowChest, "Otwieranie skrzyń", "Pozwala nieznajomym graczom używać skrzyń"));
+        inv.setItem(21, toggleItem(r.allowFlight, "Latanie", "Pozwala nieznajomym graczom latać"));
+        inv.setItem(22, toggleItem(r.allowEnter, "Wejście na działkę", "Pozwala nieznajomym graczom wchodzić"));
+        inv.setItem(23, toggleItem(r.isDay, "Przełącz dzień/noc", "Ustawia czas na działce"));
+        inv.setItem(24, toggleItem(r.allowPickup, "Podnoszenie itemów", "Pozwala nieznajomym graczom podnosić przedmioty"));
+        inv.setItem(25, toggleItem(r.allowPotion, "Rzucanie mikstur", "Pozwala nieznajomym graczom używać mikstur"));
+        inv.setItem(26, toggleItem(r.allowKillMobs, "Bicie mobów", "Pozwala nieznajomym graczom atakować moby"));
+
+        // Druga linia uprawnień
+        inv.setItem(27, toggleItem(r.allowSpawnMobs, "Respienie mobów", "Pozwala nieznajomym graczom przyzywać moby"));
+        inv.setItem(28, toggleItem(r.allowSpawnerBreak, "Niszczenie spawnerów", "Pozwala nieznajomym graczom niszczyć spawnery"));
+        inv.setItem(29, toggleItem(r.allowBeaconPlace, "Stawianie beaconów", "Pozwala nieznajomym graczom stawiać beacony"));
+        inv.setItem(30, toggleItem(r.allowBeaconBreak, "Niszczenie beaconów", "Pozwala nieznajomym graczom niszczyć beacony"));
+
+        // === ZAPROSZENI GRACZE (dół) ===
+        int slotIndex = 36;
+        for (UUID invitedUuid : r.invitedPlayers) {
+            if (slotIndex >= 54) {
+                break; // Zabezpieczenie przed przepełnieniem
+
+                        }OfflinePlayer invPlayer = Bukkit.getOfflinePlayer(invitedUuid);
+            inv.setItem(slotIndex, head(invPlayer.getName(), "Zaproszony"));
+            slotIndex++;
+        }
 
         p.openInventory(inv);
-
     }
 
 // === POD TE METODĄ openPanel DODAJ HELPER-Y: ===
@@ -662,6 +690,16 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         return it;
     }
 
+    private ItemStack toggleItem(boolean on, String name, String description) {
+        Material mat = on ? Material.LIME_WOOL : Material.RED_WOOL;
+        ItemStack is = new ItemStack(mat);
+        ItemMeta m = is.getItemMeta();
+        m.setDisplayName(name + ": " + (on ? "§aWŁ." : "§cWYŁ."));
+        m.setLore(List.of("§7" + description, "§e§lKliknij aby przełączyć!"));
+        is.setItemMeta(m);
+        return is;
+    }
+
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         // Upewnij się, że to gracz
@@ -694,27 +732,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 return;
             }
 
-            // togglery flag
-            if (name.startsWith("Kładzenie bloków")) {
-                r.allowBuild = !r.allowBuild;
-            } else if (name.startsWith("Niszczenie bloków")) {
-                r.allowDestroy = !r.allowDestroy;
-            } else if (name.startsWith("Otwieranie skrzyń")) {
-                r.allowChest = !r.allowChest;
-            } else if (name.startsWith("Podnoszenie itemów")) {
-                r.allowPickup = !r.allowPickup;
-            } else if (name.startsWith("Latanie")) {
-                r.allowFlight = !r.allowFlight;
-            } else if (name.startsWith("Bicie mobów")) {
-                r.allowKillMobs = !r.allowKillMobs;
-            } else if (name.startsWith("Respienie mobów")) {
-                r.allowSpawnMobs = !r.allowSpawnMobs;
-            }
-
-            // zapisz i odśwież GUI
-            savePlots();
-            openPanel(r, p);
-            return;
+            // This section is now handled in the main switch statement below
         }
 
         ItemStack it = event.getCurrentItem();
@@ -773,30 +791,61 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     p.sendMessage(region.allowBuild
                             ? "§aBudowanie odblokowane"
                             : "§cBudowanie zablokowane");
-                }
-                if (name.contains("Niszczenie")) {
+                } else if (name.contains("Niszczenie")) {
                     region.allowDestroy = !region.allowDestroy;
                     p.sendMessage(region.allowDestroy
                             ? "§aNiszczenie odblokowane"
                             : "§cNiszczenie zablokowane");
-                }
-                if (name.contains("Skrzynki")) {
+                } else if (name.contains("Skrzynki") || name.contains("skrzyń")) {
                     region.allowChest = !region.allowChest;
                     p.sendMessage(region.allowChest
                             ? "§aOtwieranie skrzynek odblokowane"
                             : "§cOtwieranie skrzynek zablokowane");
-                }
-                if (name.contains("Latanie")) {
+                } else if (name.contains("Latanie")) {
                     region.allowFlight = !region.allowFlight;
                     p.sendMessage(region.allowFlight
                             ? "§aLatanie odblokowane"
                             : "§cLatanie zablokowane");
-                }
-                if (name.contains("Wejście")) {
+                } else if (name.contains("Wejście")) {
                     region.allowEnter = !region.allowEnter;
                     p.sendMessage(region.allowEnter
                             ? "§aWejście odblokowane"
                             : "§cWejście zablokowane");
+                } else if (name.contains("Podnoszenie")) {
+                    region.allowPickup = !region.allowPickup;
+                    p.sendMessage(region.allowPickup
+                            ? "§aPodnoszenie itemów odblokowane"
+                            : "§cPodnoszenie itemów zablokowane");
+                } else if (name.contains("Mikstury")) {
+                    region.allowPotion = !region.allowPotion;
+                    p.sendMessage(region.allowPotion
+                            ? "§aUżywanie mikstur odblokowane"
+                            : "§cUżywanie mikstur zablokowane");
+                } else if (name.contains("Zabijanie")) {
+                    region.allowKillMobs = !region.allowKillMobs;
+                    p.sendMessage(region.allowKillMobs
+                            ? "§aZabijanie mobów odblokowane"
+                            : "§cZabijanie mobów zablokowane");
+                } else if (name.contains("Spawnowanie")) {
+                    region.allowSpawnMobs = !region.allowSpawnMobs;
+                    p.sendMessage(region.allowSpawnMobs
+                            ? "§aSpawnowanie mobów odblokowane"
+                            : "§cSpawnowanie mobów zablokowane");
+                } else if (name.contains("Spawner")) {
+                    region.allowSpawnerBreak = !region.allowSpawnerBreak;
+                    p.sendMessage(region.allowSpawnerBreak
+                            ? "§aNiszczenie spawnerów odblokowane"
+                            : "§cNiszczenie spawnerów zablokowane");
+                } else if (name.contains("Beacon") && name.contains("stawianie")) {
+                    region.allowBeaconPlace = !region.allowBeaconPlace;
+                    p.sendMessage(region.allowBeaconPlace
+                            ? "§aStawianie beaconów odblokowane"
+                            : "§cStawianie beaconów zablokowane");
+                } else if (name.contains("Beacon") && name.contains("niszczenie")) {
+                    region.allowBeaconBreak = !region.allowBeaconBreak;
+                    p.sendMessage(region.allowBeaconBreak
+                            ? "§aNiszczenie beaconów odblokowane"
+                            : "§cNiszczenie beaconów zablokowane");
                 }
                 savePlots();
                 openPanel(region, p);
