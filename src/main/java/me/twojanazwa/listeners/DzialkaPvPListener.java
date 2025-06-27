@@ -71,6 +71,11 @@ public class DzialkaPvPListener implements Listener {
                 player.sendMessage("§aZnajdujesz się na działce: §e" + currentRegion.plotName);
                 player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
                         new TextComponent("§aWchodzisz na działkę: §e" + currentRegion.plotName));
+
+                // OBSŁUGA CZASU - ustawia czas działki dla gracza
+                long t = currentRegion.isDay ? 1000L : 13000L;
+                player.setPlayerTime(t, false);
+
                 dzialkaCommand.showBossBar(currentRegion, player);
                 dzialkaCommand.scheduleBoundaryParticles(currentRegion, player);
             } else {
@@ -78,6 +83,10 @@ public class DzialkaPvPListener implements Listener {
                 player.sendMessage("§cOpuszczasz działkę.");
                 player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
                         new TextComponent("§cOpuszczasz działkę."));
+
+                // OBSŁUGA CZASU - przywraca serwerowy czas graczowi
+                player.resetPlayerTime();
+
                 BossBar bossBar = dzialkaCommand.getBossBar(player);
                 if (bossBar != null) {
                     bossBar.setVisible(false);

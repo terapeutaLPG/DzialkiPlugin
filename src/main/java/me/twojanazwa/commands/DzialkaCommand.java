@@ -1141,14 +1141,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
         // gracz wchodzi na nową działkę lub pozostaje na tej samej
         if (now != null && now != prev) {
-            // ustawiamy jego czas zgodnie ze stanem działki
-            long t = now.isDay ? 1000L : 13000L;
-            p.setPlayerTime(t, false);
             showBossBar(now, p);
         } // gracz wychodzi z działki
         else if (now == null && prev != null) {
-            // przywróć mu globalny czas
-            p.resetPlayerTime();
             BossBar bar = getBossBar(p);
             if (bar != null) {
                 bar.setVisible(false);
