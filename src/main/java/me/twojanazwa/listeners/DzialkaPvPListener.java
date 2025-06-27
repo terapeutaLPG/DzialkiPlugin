@@ -96,7 +96,9 @@ public class DzialkaPvPListener implements Listener {
                     bossBar.setVisible(false);
                 }
             }
-        }        // === OBSŁUGA CZĄSTECZEK DLA POBLISKICH DZIAŁEK ===
+        }
+
+        // === OBSŁUGA CZĄSTECZEK DLA POBLISKICH DZIAŁEK ===
         if (!regionsAreEqual(nearbyRegion, previousNearbyRegion)) {
             // Zatrzymaj poprzednie cząsteczki jeśli się oddala lub zmienia działkę
             if (previousNearbyRegion != null && !regionsAreEqual(nearbyRegion, previousNearbyRegion)) {
@@ -112,6 +114,16 @@ public class DzialkaPvPListener implements Listener {
                 }
                 dzialkaCommand.scheduleBoundaryParticles(nearbyRegion, player);
             }
+        }
+
+        // === DODATKOWA OBSŁUGA: POKAZUJ CZĄSTECZKI PO WYJŚCIU Z DZIAŁKI ===
+        // Jeśli gracz właśnie wyszedł z działki, ale nadal jest w pobliżu - pokaż cząsteczki
+        if (currentRegion == null && previousRegion != null && nearbyRegion != null
+                && regionsAreEqual(nearbyRegion, previousRegion)) {
+            // Gracz właśnie wyszedł z działki, ale nadal jest w pobliżu - pokaż granice
+            player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
+                    new TextComponent("§7Opuściłeś działkę: §e" + previousRegion.plotName + " §7(granice widoczne)"));
+            dzialkaCommand.scheduleBoundaryParticles(previousRegion, player);
         }
     }
 

@@ -438,8 +438,21 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     public void savePlots() {
+        // Upewnij się że folder istnieje
+        if (!plugin.getDataFolder().exists()) {
+            boolean created = plugin.getDataFolder().mkdirs();
+            if (created) {
+                plugin.getLogger().info("Utworzono folder danych pluginu: " + plugin.getDataFolder().getAbsolutePath());
+            } else {
+                plugin.getLogger().severe("Nie można utworzyć folderu danych pluginu: " + plugin.getDataFolder().getAbsolutePath());
+                return;
+            }
+        }
+
         File file = new File(plugin.getDataFolder(), "plots.yml");
         YamlConfiguration config = new YamlConfiguration();
+
+        plugin.getLogger().info("Zapisywanie działek... Liczba graczy z działkami: " + dzialki.size());
 
         for (UUID uuid : dzialki.keySet()) {
             List<ProtectedRegion> regionList = dzialki.get(uuid);
@@ -449,9 +462,11 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     ProtectedRegion r = regionList.get(i);
                     // 3. savePlots() – pomiń uszkodzony region
                     if (r.plotName == null) {
+                        plugin.getLogger().warning("Pomijam działkę bez nazwy dla gracza: " + uuid);
                         continue;
                     }
                     String regionKey = key + "." + i;
+                    plugin.getLogger().info("Zapisywanie działki: " + r.plotName + " (właściciel: " + r.owner + ")");
                     config.set(regionKey + ".minX", r.minX);
                     config.set(regionKey + ".maxX", r.maxX);
                     config.set(regionKey + ".minZ", r.minZ);
@@ -507,8 +522,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
         try {
             config.save(file);
+            plugin.getLogger().info("Działki zostały zapisane pomyślnie do: " + file.getAbsolutePath());
         } catch (IOException e) {
             plugin.getLogger().severe(String.format("An error occurred while saving plots: %s", e.getMessage()));
+            e.printStackTrace();
         }
     }
 

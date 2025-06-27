@@ -27,6 +27,15 @@ public class App extends JavaPlugin {
         );
 
         dzialkaCommand.loadPlots();
+
+        // Automatyczne zapisywanie co 5 minut (6000 ticków)
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (dzialkaCommand != null) {
+                dzialkaCommand.savePlots();
+                getLogger().info("Automatyczny zapis działek wykonany.");
+            }
+        }, 6000L, 6000L);
+
         getLogger().info("Plugin dzialkiplugin został włączony!");
     }
 
