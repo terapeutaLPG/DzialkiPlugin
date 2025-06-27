@@ -320,6 +320,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         return true;
                     }
                     r.invitedPlayers.add(invited.getUniqueId());
+                    savePlots();
                     invited.sendMessage("§aZostałeś zaproszony na działkę '" + nazwa + "'.");
                     gracz.sendMessage("§aZaproszono '" + nick + "' na działkę '" + nazwa + "'.");
                     return true;
@@ -339,6 +340,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         return true;
                     }
                     r.invitedPlayers.remove(gracz.getUniqueId());
+                    savePlots();
                     gracz.sendMessage("§aOpuściłeś działkę '" + nazwa + "'.");
                     return true;
                 }
@@ -366,6 +368,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         return true;
                     }
                     r.deputy = deputyPlayer.getUniqueId();
+                    savePlots();
                     gracz.sendMessage("§aUstawiono '" + nick + "' jako zastępcę działki '" + nazwa + "'.");
                     return true;
                 }
@@ -463,6 +466,14 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     config.set(regionKey + ".warp", r.warp);
                     config.set(regionKey + ".points", r.points);
                     config.set(regionKey + ".deputy", r.deputy);
+
+                    // Zapisz wszystkie globalne uprawnienia
+                    config.set(regionKey + ".allowBuild", r.allowBuild);
+                    config.set(regionKey + ".allowDestroy", r.allowDestroy);
+                    config.set(regionKey + ".allowChest", r.allowChest);
+                    config.set(regionKey + ".allowFlight", r.allowFlight);
+                    config.set(regionKey + ".allowEnter", r.allowEnter);
+                    config.set(regionKey + ".isDay", r.isDay);
                     config.set(regionKey + ".allowPickup", r.allowPickup);
                     config.set(regionKey + ".allowPotion", r.allowPotion);
                     config.set(regionKey + ".allowKillMobs", r.allowKillMobs);
@@ -508,79 +519,113 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             return;
         }
         YamlConfiguration config = YamlConfiguration.loadConfiguration(file);
+
+        // Grupuj klucze według UUID właściciela
+        Map<UUID, List<String>> playerKeys = new HashMap<>();
         for (String key : config.getKeys(false)) {
-            UUID uuid = UUID.fromString(key);
-            String plotName = config.getString(key + ".plotName");
-            // 2. Pomijaj regiony bez nazwy
-            if (plotName == null || plotName.isBlank()) {
-                plugin.getLogger().warning("Pomijam region bez nazwy (klucz: " + key + ")");
-                continue;
-            }
-            int minX = config.getInt(key + ".minX");
-            int maxX = config.getInt(key + ".maxX");
-            int minZ = config.getInt(key + ".minZ");
-            int maxZ = config.getInt(key + ".maxZ");
-            int minY = config.getInt(key + ".minY");
-            int maxY = config.getInt(key + ".maxY");
-            Location center = config.getLocation(key + ".center");
-            String owner = config.getString(key + ".owner");
-            long creationTime = config.getLong(key + ".creationTime");
-            List<?> rawList = config.getList(key + ".invitedPlayers");
-            List<UUID> invitedPlayers = new ArrayList<>();
-            if (rawList != null) {
-                for (Object obj : rawList) {
-                    if (obj instanceof String str) {
-                        invitedPlayers.add(UUID.fromString(str));
-                    }
+            String[] parts = key.split("\\.");
+            if (parts.length >= 2) {
+                try {
+                    UUID ownerUUID = UUID.fromString(parts[0]);
+                    playerKeys.computeIfAbsent(ownerUUID, k -> new ArrayList<>()).add(key);
+                } catch (IllegalArgumentException e) {
+                    plugin.getLogger().warning("Nieprawidłowy klucz UUID: " + key);
                 }
             }
-            Location warp = config.getLocation(key + ".warp");
-            int points = config.getInt(key + ".points");
-            UUID deputy = (UUID) config.get(key + ".deputy");
-            plugin.getLogger().info(String.format("Ładowanie działki: %s (Właściciel: %s)", plotName, owner));
-            ProtectedRegion region = new ProtectedRegion(minX, maxX, minZ, maxZ, minY, maxY, center, owner, plotName, creationTime);
-            region.invitedPlayers.addAll(invitedPlayers);
-            region.warp = warp;
-            region.points = points;
-            region.deputy = deputy;
+        }
 
-            // Load permission settings
-            region.allowPickup = config.getBoolean(key + ".allowPickup", false);
-            region.allowPotion = config.getBoolean(key + ".allowPotion", false);
-            region.allowKillMobs = config.getBoolean(key + ".allowKillMobs", false);
-            region.allowSpawnMobs = config.getBoolean(key + ".allowSpawnMobs", false);
-            region.allowSpawnerBreak = config.getBoolean(key + ".allowSpawnerBreak", false);
-            region.allowBeaconPlace = config.getBoolean(key + ".allowBeaconPlace", false);
-            region.allowBeaconBreak = config.getBoolean(key + ".allowBeaconBreak", false);
+        // Ładuj działki dla każdego gracza
+        for (Map.Entry<UUID, List<String>> entry : playerKeys.entrySet()) {
+            UUID playerUUID = entry.getKey();
+            List<ProtectedRegion> regions = new ArrayList<>();
 
-            // Ładuj indywidualne uprawnienia graczy
-            if (config.contains(key + ".playerPermissions")) {
-                for (String playerUuidString : config.getConfigurationSection(key + ".playerPermissions").getKeys(false)) {
-                    try {
-                        UUID playerUuid = UUID.fromString(playerUuidString);
-                        String playerPermKey = key + ".playerPermissions." + playerUuidString;
+            for (String key : entry.getValue()) {
+                String plotName = config.getString(key + ".plotName");
+                // Pomijaj regiony bez nazwy
+                if (plotName == null || plotName.isBlank()) {
+                    plugin.getLogger().warning("Pomijam region bez nazwy (klucz: " + key + ")");
+                    continue;
+                }
 
-                        PlayerPermissions perms = new PlayerPermissions();
-                        perms.allowBuild = config.getBoolean(playerPermKey + ".allowBuild", false);
-                        perms.allowDestroy = config.getBoolean(playerPermKey + ".allowDestroy", false);
-                        perms.allowChest = config.getBoolean(playerPermKey + ".allowChest", false);
-                        perms.allowFlight = config.getBoolean(playerPermKey + ".allowFlight", false);
-                        perms.allowPickup = config.getBoolean(playerPermKey + ".allowPickup", false);
-                        perms.allowPotion = config.getBoolean(playerPermKey + ".allowPotion", false);
-                        perms.allowKillMobs = config.getBoolean(playerPermKey + ".allowKillMobs", false);
-                        perms.allowSpawnMobs = config.getBoolean(playerPermKey + ".allowSpawnMobs", false);
-                        perms.allowSpawnerBreak = config.getBoolean(playerPermKey + ".allowSpawnerBreak", false);
-                        perms.allowBeaconPlace = config.getBoolean(playerPermKey + ".allowBeaconPlace", false);
-                        perms.allowBeaconBreak = config.getBoolean(playerPermKey + ".allowBeaconBreak", false);
+                int minX = config.getInt(key + ".minX");
+                int maxX = config.getInt(key + ".maxX");
+                int minZ = config.getInt(key + ".minZ");
+                int maxZ = config.getInt(key + ".maxZ");
+                int minY = config.getInt(key + ".minY");
+                int maxY = config.getInt(key + ".maxY");
+                Location center = config.getLocation(key + ".center");
+                String owner = config.getString(key + ".owner");
+                long creationTime = config.getLong(key + ".creationTime");
 
-                        region.playerPermissions.put(playerUuid, perms);
-                    } catch (IllegalArgumentException e) {
-                        plugin.getLogger().warning("Nieprawidłowy UUID gracza w uprawnieniach: " + playerUuidString);
+                List<?> rawList = config.getList(key + ".invitedPlayers");
+                List<UUID> invitedPlayers = new ArrayList<>();
+                if (rawList != null) {
+                    for (Object obj : rawList) {
+                        if (obj instanceof String str) {
+                            invitedPlayers.add(UUID.fromString(str));
+                        }
                     }
                 }
+
+                Location warp = config.getLocation(key + ".warp");
+                int points = config.getInt(key + ".points");
+                UUID deputy = (UUID) config.get(key + ".deputy");
+
+                plugin.getLogger().info(String.format("Ładowanie działki: %s (Właściciel: %s)", plotName, owner));
+                ProtectedRegion region = new ProtectedRegion(minX, maxX, minZ, maxZ, minY, maxY, center, owner, plotName, creationTime);
+                region.invitedPlayers.addAll(invitedPlayers);
+                region.warp = warp;
+                region.points = points;
+                region.deputy = deputy;
+
+                // Load all permission settings
+                region.allowBuild = config.getBoolean(key + ".allowBuild", true);
+                region.allowDestroy = config.getBoolean(key + ".allowDestroy", true);
+                region.allowChest = config.getBoolean(key + ".allowChest", true);
+                region.allowFlight = config.getBoolean(key + ".allowFlight", false);
+                region.allowEnter = config.getBoolean(key + ".allowEnter", true);
+                region.isDay = config.getBoolean(key + ".isDay", true);
+                region.allowPickup = config.getBoolean(key + ".allowPickup", false);
+                region.allowPotion = config.getBoolean(key + ".allowPotion", false);
+                region.allowKillMobs = config.getBoolean(key + ".allowKillMobs", false);
+                region.allowSpawnMobs = config.getBoolean(key + ".allowSpawnMobs", false);
+                region.allowSpawnerBreak = config.getBoolean(key + ".allowSpawnerBreak", false);
+                region.allowBeaconPlace = config.getBoolean(key + ".allowBeaconPlace", false);
+                region.allowBeaconBreak = config.getBoolean(key + ".allowBeaconBreak", false);
+
+                // Ładuj indywidualne uprawnienia graczy
+                if (config.contains(key + ".playerPermissions")) {
+                    for (String playerUuidString : config.getConfigurationSection(key + ".playerPermissions").getKeys(false)) {
+                        try {
+                            UUID playerUuid = UUID.fromString(playerUuidString);
+                            String playerPermKey = key + ".playerPermissions." + playerUuidString;
+
+                            PlayerPermissions perms = new PlayerPermissions();
+                            perms.allowBuild = config.getBoolean(playerPermKey + ".allowBuild", false);
+                            perms.allowDestroy = config.getBoolean(playerPermKey + ".allowDestroy", false);
+                            perms.allowChest = config.getBoolean(playerPermKey + ".allowChest", false);
+                            perms.allowFlight = config.getBoolean(playerPermKey + ".allowFlight", false);
+                            perms.allowPickup = config.getBoolean(playerPermKey + ".allowPickup", false);
+                            perms.allowPotion = config.getBoolean(playerPermKey + ".allowPotion", false);
+                            perms.allowKillMobs = config.getBoolean(playerPermKey + ".allowKillMobs", false);
+                            perms.allowSpawnMobs = config.getBoolean(playerPermKey + ".allowSpawnMobs", false);
+                            perms.allowSpawnerBreak = config.getBoolean(playerPermKey + ".allowSpawnerBreak", false);
+                            perms.allowBeaconPlace = config.getBoolean(playerPermKey + ".allowBeaconPlace", false);
+                            perms.allowBeaconBreak = config.getBoolean(playerPermKey + ".allowBeaconBreak", false);
+
+                            region.playerPermissions.put(playerUuid, perms);
+                        } catch (IllegalArgumentException e) {
+                            plugin.getLogger().warning("Nieprawidłowy UUID gracza w uprawnieniach: " + playerUuidString);
+                        }
+                    }
+                }
+
+                regions.add(region);
             }
 
-            dzialki.computeIfAbsent(uuid, k -> new ArrayList<>()).add(region);
+            if (!regions.isEmpty()) {
+                dzialki.put(playerUUID, regions);
+            }
         }
     }
 
@@ -752,10 +797,12 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     private ItemStack toggleItem(boolean on, String name, String description, Material material) {
-        ItemStack is = new ItemStack(material);
+        // Użyj kolorowej wełny do oznaczeń włączenia/wyłączenia, ale zachowaj oryginalny materiał w nazwie
+        Material displayMaterial = on ? Material.LIME_WOOL : Material.RED_WOOL;
+        ItemStack is = new ItemStack(displayMaterial);
         ItemMeta m = is.getItemMeta();
-        m.setDisplayName(name + ": " + (on ? "§aWŁ." : "§cWYŁ."));
-        m.setLore(List.of("§7" + description, "§e§lKliknij aby przełączyć!"));
+        m.setDisplayName("§f" + name + ": " + (on ? "§aWŁ." : "§cWYŁ."));
+        m.setLore(List.of("§7" + description, "§e§lKliknij aby przełączyć!", "§8Material: " + material.name()));
         is.setItemMeta(m);
         return is;
     }
