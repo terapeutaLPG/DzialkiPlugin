@@ -40,6 +40,7 @@ import org.bukkit.event.entity.PotionSplashEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -642,7 +643,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             if (slotIndex >= 54) {
                 break; // Zabezpieczenie przed przepełnieniem
 
-                        }OfflinePlayer invPlayer = Bukkit.getOfflinePlayer(invitedUuid);
+            }
+            OfflinePlayer invPlayer = Bukkit.getOfflinePlayer(invitedUuid);
             inv.setItem(slotIndex, head(invPlayer.getName(), "Zaproszony"));
             slotIndex++;
         }
@@ -716,32 +718,12 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         // Zablokuj wyciąganie itemów
         event.setCancelled(true);
 
-        if (title.startsWith("Panel Działki: ")) {
-            ItemStack it = event.getCurrentItem();
-            if (it == null || !it.hasItemMeta()) {
-                return;
-            }
-            String name = ChatColor.stripColor(it.getItemMeta().getDisplayName());
-            String plotName = title.substring("Panel Działki: ".length());
-            ProtectedRegion r = getRegionByName(plotName);
-
-            // teleportacja na środek działki
-            if (name.equals("Teleportuj na środek")) {
-                p.teleport(r.center.clone().add(0.5, 1, 0.5));
-                p.sendMessage("§aTeleport na środek działki!");
-                return;
-            }
-
-            // This section is now handled in the main switch statement below
-        }
-
         ItemStack it = event.getCurrentItem();
         if (it == null || !it.hasItemMeta()) {
             return;
         }
-        String name = it.getItemMeta().getDisplayName();
 
-        // Nazwa działki
+        String name = it.getItemMeta().getDisplayName();
         String plotName = title.substring("Panel Działki: ".length());
         ProtectedRegion region = getRegionByName(plotName);
         if (region == null) {
@@ -755,21 +737,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
 
         // — teleport —  
-        if (name.equals("§aTeleportuj na działkę")) {
+        if (name.equals("§aTeleportuj na środek")) {
             p.teleport(region.center.clone().add(0.5, 1, 0.5));
-            p.sendMessage("§aTeleport!");
-            return;
-        }
-
-        // — przełączanie dzień/noc —  
-        if (name.equals("§ePrzełącz dzień/noc")) {
-            region.isDay = !region.isDay;
-            long t = region.isDay ? 1000L : 13000L;
-            p.setPlayerTime(t, false);
-            p.sendMessage(region.isDay
-                    ? "§aWłączyłeś dzień na tej działce."
-                    : "§aWłączyłeś noc na tej działce.");
-            openPanel(region, p);
+            p.sendMessage("§aTeleport na środek działki!");
             return;
         }
 
@@ -786,21 +756,21 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         // — togglery uprawnień —  
         switch (it.getType()) {
             case GREEN_CONCRETE, RED_CONCRETE -> {
-                if (name.contains("Budowanie")) {
+                if (name.contains("Stawianie")) {
                     region.allowBuild = !region.allowBuild;
                     p.sendMessage(region.allowBuild
-                            ? "§aBudowanie odblokowane"
-                            : "§cBudowanie zablokowane");
-                } else if (name.contains("Niszczenie")) {
+                            ? "§aStawianie bloków odblokowane"
+                            : "§cStawianie bloków zablokowane");
+                } else if (name.contains("Niszczenie bloków")) {
                     region.allowDestroy = !region.allowDestroy;
                     p.sendMessage(region.allowDestroy
-                            ? "§aNiszczenie odblokowane"
-                            : "§cNiszczenie zablokowane");
-                } else if (name.contains("Skrzynki") || name.contains("skrzyń")) {
+                            ? "§aNiszczenie bloków odblokowane"
+                            : "§cNiszczenie bloków zablokowane");
+                } else if (name.contains("Otwieranie skrzyń")) {
                     region.allowChest = !region.allowChest;
                     p.sendMessage(region.allowChest
-                            ? "§aOtwieranie skrzynek odblokowane"
-                            : "§cOtwieranie skrzynek zablokowane");
+                            ? "§aOtwieranie skrzyń odblokowane"
+                            : "§cOtwieranie skrzyń zablokowane");
                 } else if (name.contains("Latanie")) {
                     region.allowFlight = !region.allowFlight;
                     p.sendMessage(region.allowFlight
@@ -809,43 +779,50 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 } else if (name.contains("Wejście")) {
                     region.allowEnter = !region.allowEnter;
                     p.sendMessage(region.allowEnter
-                            ? "§aWejście odblokowane"
-                            : "§cWejście zablokowane");
+                            ? "§aWejście na działkę odblokowane"
+                            : "§cWejście na działkę zablokowane");
                 } else if (name.contains("Podnoszenie")) {
                     region.allowPickup = !region.allowPickup;
                     p.sendMessage(region.allowPickup
                             ? "§aPodnoszenie itemów odblokowane"
                             : "§cPodnoszenie itemów zablokowane");
-                } else if (name.contains("Mikstury")) {
+                } else if (name.contains("Rzucanie mikstur")) {
                     region.allowPotion = !region.allowPotion;
                     p.sendMessage(region.allowPotion
-                            ? "§aUżywanie mikstur odblokowane"
-                            : "§cUżywanie mikstur zablokowane");
-                } else if (name.contains("Zabijanie")) {
+                            ? "§aRzucanie mikstur odblokowane"
+                            : "§cRzucanie mikstur zablokowane");
+                } else if (name.contains("Bicie mobów")) {
                     region.allowKillMobs = !region.allowKillMobs;
                     p.sendMessage(region.allowKillMobs
-                            ? "§aZabijanie mobów odblokowane"
-                            : "§cZabijanie mobów zablokowane");
-                } else if (name.contains("Spawnowanie")) {
+                            ? "§aBicie mobów odblokowane"
+                            : "§cBicie mobów zablokowane");
+                } else if (name.contains("Respienie mobów")) {
                     region.allowSpawnMobs = !region.allowSpawnMobs;
                     p.sendMessage(region.allowSpawnMobs
-                            ? "§aSpawnowanie mobów odblokowane"
-                            : "§cSpawnowanie mobów zablokowane");
-                } else if (name.contains("Spawner")) {
+                            ? "§aRespienie mobów odblokowane"
+                            : "§cRespienie mobów zablokowane");
+                } else if (name.contains("Niszczenie spawnerów")) {
                     region.allowSpawnerBreak = !region.allowSpawnerBreak;
                     p.sendMessage(region.allowSpawnerBreak
                             ? "§aNiszczenie spawnerów odblokowane"
                             : "§cNiszczenie spawnerów zablokowane");
-                } else if (name.contains("Beacon") && name.contains("stawianie")) {
+                } else if (name.contains("Stawianie beaconów")) {
                     region.allowBeaconPlace = !region.allowBeaconPlace;
                     p.sendMessage(region.allowBeaconPlace
                             ? "§aStawianie beaconów odblokowane"
                             : "§cStawianie beaconów zablokowane");
-                } else if (name.contains("Beacon") && name.contains("niszczenie")) {
+                } else if (name.contains("Niszczenie beaconów")) {
                     region.allowBeaconBreak = !region.allowBeaconBreak;
                     p.sendMessage(region.allowBeaconBreak
                             ? "§aNiszczenie beaconów odblokowane"
                             : "§cNiszczenie beaconów zablokowane");
+                } else if (name.contains("Przełącz dzień/noc")) {
+                    region.isDay = !region.isDay;
+                    long t = region.isDay ? 1000L : 13000L;
+                    p.setPlayerTime(t, false);
+                    p.sendMessage(region.isDay
+                            ? "§aWłączyłeś dzień na tej działce."
+                            : "§aWłączyłeś noc na tej działce.");
                 }
                 savePlots();
                 openPanel(region, p);
@@ -1013,7 +990,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         ProtectedRegion now = getRegion(p.getLocation());
         ProtectedRegion prev = getRegion(ev.getFrom());
 
-        // gracz wchodzi na nową działkę
+        // gracz wchodzi na nową działkę lub pozostaje na tej samej
         if (now != null && now != prev) {
             // ustawiamy jego czas zgodnie ze stanem działki
             long t = now.isDay ? 1000L : 13000L;
@@ -1026,6 +1003,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             BossBar bar = getBossBar(p);
             if (bar != null) {
                 bar.setVisible(false);
+                bar.removePlayer(p);
+            }
+        } // gracz pozostaje na tej samej działce - upewnij się że bossbar jest widoczny
+        else if (now != null && now == prev) {
+            BossBar bar = getBossBar(p);
+            if (bar != null && !bar.isVisible()) {
+                showBossBar(now, p);
             }
         }
     }
@@ -1039,11 +1023,14 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     BarColor.YELLOW,
                     BarStyle.SOLID
             );
-            bossBar.addPlayer(player);
             bossBary.put(player.getUniqueId(), bossBar);
         }
 
+        // Zawsze aktualizuj tytuł i dodaj gracza
         bossBar.setTitle("§eDziałka: §a" + region.plotName + " §e| Właściciel: §a" + region.owner);
+        if (!bossBar.getPlayers().contains(player)) {
+            bossBar.addPlayer(player);
+        }
         bossBar.setVisible(true);
     }
 
@@ -1175,6 +1162,17 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
 
         player.openInventory(inv);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        BossBar bossBar = bossBary.get(player.getUniqueId());
+        if (bossBar != null) {
+            bossBar.removePlayer(player);
+            bossBar.setVisible(false);
+            bossBary.remove(player.getUniqueId());
+        }
     }
 
     public static class ProtectedRegion {
