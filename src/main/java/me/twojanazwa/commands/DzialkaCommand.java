@@ -1434,9 +1434,51 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     // Mapa przechowująca aktywne granice dla każdego gracza
     private final Map<UUID, BukkitRunnable> playerBoundaryTasks = new HashMap<>();
 
-    // Wywołuj to np. przy wejściu na działkę albo dołączeniu gracza
+    public void stopBoundaryParticles(Player player) {
+        BukkitRunnable old = playerBoundaryTasks.remove(player.getUniqueId());
+        if (old != null) {
+            old.cancel();
+        }
+    }
+
+    // ========================= NOWY SYSTEM GRANIC =========================
+    // Główna metoda do wyświetlania granic na określonej wysokości
+    public void showBoundaryParticles(ProtectedRegion region, Player player, int y) {
+        World world = player.getWorld();
+        int edgeStep = 1; // Gęstość particles na krawędziach (co ile bloków)
+
+        // Górna krawędź (północ) - z = minZ
+        for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+            Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
+            spawnFireParticles(player, loc);
+        }
+
+        // Dolna krawędź (południe) - z = maxZ  
+        for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+            Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
+            spawnFireParticles(player, loc);
+        }
+
+        // Lewa krawędź (zachód) - x = minX
+        for (int z = region.minZ + edgeStep; z < region.maxZ; z += edgeStep) { // +edgeStep i < żeby uniknąć podwójnych narożników
+            Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
+            spawnFireParticles(player, loc);
+        }
+
+        // Prawa krawędź (wschód) - x = maxX
+        for (int z = region.minZ + edgeStep; z < region.maxZ; z += edgeStep) { // +edgeStep i < żeby uniknąć podwójnych narożników
+            Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
+            spawnFireParticles(player, loc);
+        }
+    }
+
+    // Metoda do cyklicznego wyświetlania granic na wielu poziomach
     public void scheduleBoundaryParticles(ProtectedRegion region, Player player) {
-        stopBoundaryParticles(player); // wyczyść stare efekty
+        stopBoundaryParticles(player); // Zatrzymaj poprzednie zadanie
+
+        int minY = Math.max(region.minY, player.getWorld().getMinHeight() + 5);
+        int maxY = Math.min(region.maxY, player.getWorld().getMaxHeight() - 5);
+        int yStep = 8; // Co ile bloków w pionie rysować granice
 
         BukkitRunnable task = new BukkitRunnable() {
             @Override
@@ -1447,53 +1489,23 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     return;
                 }
 
-                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 15);
+                // Sprawdź czy gracz nadal jest w pobliżu działki
+                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 20);
                 if (nearby == null || !nearby.equals(region)) {
                     cancel();
                     playerBoundaryTasks.remove(player.getUniqueId());
                     return;
                 }
 
-                showSolidPlotBorders(region, player);
+                // Wyświetl granice na wszystkich poziomach dla tego cyklu
+                for (int y = minY; y <= maxY; y += yStep) {
+                    showBoundaryParticles(region, player, y);
+                }
             }
         };
 
-        task.runTaskTimer(plugin, 0L, 40L); // co 2 sekundy
+        task.runTaskTimer(plugin, 0L, 60L); // Co 3 sekundy (60 ticków)
         playerBoundaryTasks.put(player.getUniqueId(), task);
-    }
-
-    public void stopBoundaryParticles(Player player) {
-        BukkitRunnable old = playerBoundaryTasks.remove(player.getUniqueId());
-        if (old != null) {
-            old.cancel();
-        }
-    }
-
-    // ========================= GRANICE =========================
-    public void showSolidPlotBorders(ProtectedRegion region, Player player) {
-        World world = player.getWorld();
-        int y = player.getLocation().getBlockY() + 1;
-
-        drawSolidLineX(world, region.minX, region.maxX, region.minZ, y, player); // dół
-        drawSolidLineX(world, region.minX, region.maxX, region.maxZ, y, player); // góra
-        drawSolidLineZ(world, region.minZ, region.maxZ, region.minX, y, player); // lewa
-        drawSolidLineZ(world, region.minZ, region.maxZ, region.maxX, y, player); // prawa
-    }
-
-    // ========================= LINIA X =========================
-    private void drawSolidLineX(World world, int startX, int endX, int z, int y, Player player) {
-        for (int x = startX; x <= endX; x++) {
-            Location loc = new Location(world, x + 0.5, y, z + 0.5);
-            spawnFireParticles(player, loc);
-        }
-    }
-
-    // ========================= LINIA Z =========================
-    private void drawSolidLineZ(World world, int startZ, int endZ, int x, int y, Player player) {
-        for (int z = startZ; z <= endZ; z++) {
-            Location loc = new Location(world, x + 0.5, y, z + 0.5);
-            spawnFireParticles(player, loc);
-        }
     }
 
     // ========================= PARTICLE PACK =========================
