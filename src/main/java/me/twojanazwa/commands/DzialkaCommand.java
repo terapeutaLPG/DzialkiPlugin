@@ -1461,73 +1461,92 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             }
         };
 
-        task.runTaskTimer(plugin, 0L, 20L); // Co sekundę (20 ticków)
+        task.runTaskTimer(plugin, 0L, 40L); // Co 2 sekundy (40 ticków) - lżej dla serwera
         playerBoundaryTasks.put(player.getUniqueId(), task);
     }
 
     private void showPlotBoundaries(ProtectedRegion region, Player player) {
         World world = player.getWorld();
+        int playerY = player.getLocation().getBlockY();
+        int maxHeight = world.getMaxHeight() - 1; // Maksymalna wysokość mapy
 
-        // Wysokość na której będą wyświetlane granice (wysokość gracza + 1)
-        int boundaryY = player.getLocation().getBlockY() + 1;
-
-        // === POZIOME LINIE CZĄSTECZEK WZDŁUŻ WSZYSTKICH KRAWĘDZI (co 10 bloków) ===
-        // Północna granica (Z = maxZ) - linia pozioma co 10 bloków wzdłuż całej szerokości
+        // === PIONOWE SŁUPKI OGNIA WZDŁUŻ WSZYSTKICH KRAWĘDZI (co 10 bloków) ===
+        // Północna granica (Z = maxZ) - pionowe słupki co 10 bloków wzdłuż całej szerokości
         for (int x = region.minX; x <= region.maxX; x += 10) {
-            Location loc = new Location(world, x, boundaryY, region.maxZ);
-            player.spawnParticle(Particle.FLAME, loc, 3, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.3, 0, 0), 2, 0.1, 0.1, 0.1, 0.01);
+            createVerticalFireColumn(world, x, region.maxZ, playerY, maxHeight, player);
         }
-        // Dodaj particle na końcu północnej granicy jeśli nie jest wielokrotnością 10
+        // Dodaj słupek na końcu północnej granicy jeśli nie jest wielokrotnością 10
         if ((region.maxX - region.minX) % 10 != 0) {
-            Location loc = new Location(world, region.maxX, boundaryY, region.maxZ);
-            player.spawnParticle(Particle.FLAME, loc, 3, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.3, 0, 0), 2, 0.1, 0.1, 0.1, 0.01);
+            createVerticalFireColumn(world, region.maxX, region.maxZ, playerY, maxHeight, player);
         }
 
-        // Południowa granica (Z = minZ) - linia pozioma co 10 bloków wzdłuż całej szerokości
+        // Południowa granica (Z = minZ) - pionowe słupki co 10 bloków wzdłuż całej szerokości
         for (int x = region.minX; x <= region.maxX; x += 10) {
-            Location loc = new Location(world, x, boundaryY, region.minZ);
-            player.spawnParticle(Particle.FLAME, loc, 3, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.3, 0, 0), 2, 0.1, 0.1, 0.1, 0.01);
+            createVerticalFireColumn(world, x, region.minZ, playerY, maxHeight, player);
         }
-        // Dodaj particle na końcu południowej granicy jeśli nie jest wielokrotnością 10
+        // Dodaj słupek na końcu południowej granicy jeśli nie jest wielokrotnością 10
         if ((region.maxX - region.minX) % 10 != 0) {
-            Location loc = new Location(world, region.maxX, boundaryY, region.minZ);
-            player.spawnParticle(Particle.FLAME, loc, 3, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.3, 0, 0), 2, 0.1, 0.1, 0.1, 0.01);
+            createVerticalFireColumn(world, region.maxX, region.minZ, playerY, maxHeight, player);
         }
 
-        // Wschodnia granica (X = maxX) - linia pozioma co 10 bloków wzdłuż całej długości
+        // Wschodnia granica (X = maxX) - pionowe słupki co 10 bloków wzdłuż całej długości
         for (int z = region.minZ + 10; z < region.maxZ; z += 10) { // +10 i <maxZ aby uniknąć duplikowania rogów
-            Location loc = new Location(world, region.maxX, boundaryY, z);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 3, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.FLAME, loc.clone().add(0, 0, 0.3), 2, 0.1, 0.1, 0.1, 0.01);
+            createVerticalFireColumn(world, region.maxX, z, playerY, maxHeight, player);
         }
 
-        // Zachodnia granica (X = minX) - linia pozioma co 10 bloków wzdłuż całej długości
+        // Zachodnia granica (X = minX) - pionowe słupki co 10 bloków wzdłuż całej długości
         for (int z = region.minZ + 10; z < region.maxZ; z += 10) { // +10 i <maxZ aby uniknąć duplikowania rogów
-            Location loc = new Location(world, region.minX, boundaryY, z);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 3, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.FLAME, loc.clone().add(0, 0, 0.3), 2, 0.1, 0.1, 0.1, 0.01);
+            createVerticalFireColumn(world, region.minX, z, playerY, maxHeight, player);
         }
 
-        // === WYRÓŻNIONE ROGI DZIAŁKI - SPECJALNE EFEKTY ===
-        Location[] corners = {
-            new Location(world, region.minX, boundaryY, region.minZ), // Róg SW
-            new Location(world, region.maxX, boundaryY, region.minZ), // Róg SE  
-            new Location(world, region.maxX, boundaryY, region.maxZ), // Róg NE
-            new Location(world, region.minX, boundaryY, region.maxZ) // Róg NW
+        // === WYRÓŻNIONE ROGI DZIAŁKI - SPECJALNE PIONOWE SŁUPKI ===
+        int[][] corners = {
+            {region.minX, region.minZ}, // Róg SW
+            {region.maxX, region.minZ}, // Róg SE  
+            {region.maxX, region.maxZ}, // Róg NE
+            {region.minX, region.maxZ} // Róg NW
         };
 
-        // Stwórz specjalne efekty w rogach
-        for (Location corner : corners) {
-            // Mieszanka różnych cząsteczek dla efektu rogów
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, corner, 5, 0.3, 0.3, 0.3, 0.02);
-            player.spawnParticle(Particle.FLAME, corner.clone().add(0.3, 0, 0.3), 4, 0.2, 0.2, 0.2, 0.01);
-            player.spawnParticle(Particle.REDSTONE, corner, 3, 0.2, 0.2, 0.2, 0.0,
-                    new Particle.DustOptions(Color.YELLOW, 1.8f));
-            player.spawnParticle(Particle.END_ROD, corner, 2, 0.1, 0.1, 0.1, 0.01);
+        // Stwórz specjalne pionowe słupki w rogach z dodatkowymi efektami
+        for (int[] corner : corners) {
+            createEnhancedVerticalFireColumn(world, corner[0], corner[1], playerY, maxHeight, player);
+        }
+    }
+
+    /**
+     * Tworzy pionowy słupek z cząsteczek ognia co 4 bloki w pionie
+     */
+    private void createVerticalFireColumn(World world, int x, int z, int startY, int endY, Player player) {
+        for (int y = startY; y <= endY; y += 4) {
+            Location loc = new Location(world, x + 0.5, y + 1, z + 0.5);
+
+            // Główne cząsteczki ognia - dobrze widoczne w dzień i w nocy
+            player.spawnParticle(Particle.FLAME, loc, 2, 0.1, 0.1, 0.1, 0.01);
+
+            // Dodatkowe cząsteczki dla lepszej widoczności
+            if (y % 8 == 0) { // Co drugi poziom dodaj więcej efektów
+                player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.2, 0, 0), 1, 0.05, 0.05, 0.05, 0.01);
+            }
+        }
+    }
+
+    /**
+     * Tworzy ulepszoną wersję pionowego słupka w rogach działki
+     */
+    private void createEnhancedVerticalFireColumn(World world, int x, int z, int startY, int endY, Player player) {
+        for (int y = startY; y <= endY; y += 3) { // Gęściej w rogach (co 3 bloki)
+            Location loc = new Location(world, x + 0.5, y + 1, z + 0.5);
+
+            // Intensywniejsze efekty w rogach
+            player.spawnParticle(Particle.FLAME, loc, 3, 0.15, 0.15, 0.15, 0.02);
+            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.2, 0, 0.2), 2, 0.1, 0.1, 0.1, 0.01);
+
+            // Specjalne efekty co kilka poziomów
+            if (y % 12 == 0) {
+                player.spawnParticle(Particle.REDSTONE, loc, 2, 0.1, 0.1, 0.1, 0.0,
+                        new Particle.DustOptions(Color.ORANGE, 1.5f));
+                player.spawnParticle(Particle.END_ROD, loc, 1, 0.05, 0.05, 0.05, 0.01);
+            }
         }
     }
 
