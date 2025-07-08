@@ -26,7 +26,6 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
-import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
@@ -1431,6 +1430,62 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         public boolean allowBeaconBreak = false;
     }
 
+    // ==== STAŁE ====
+    private static final int CLUSTER_SPACING = 10;      // co ile bloków pojawia się klaster
+    private static final double CLUSTER_RADIUS = 0.3;   // rozrzut cząstek w klastrze
+
+    // ==== API =====
+    public void showPlotBoundaries(ProtectedRegion region, Player player) {
+
+        World world = player.getWorld();
+        int groundY = player.getLocation().getBlockY() + 1;   // 1 blok nad ziemią
+
+        // Linie wzdłuż osi X
+        drawLineX(world, region.minX, region.maxX, region.minZ, groundY, player); // południe
+        drawLineX(world, region.minX, region.maxX, region.maxZ, groundY, player); // północ
+
+        // Linie wzdłuż osi Z
+        drawLineZ(world, region.minZ, region.maxZ, region.minX, groundY, player); // zachód
+        drawLineZ(world, region.minZ, region.maxZ, region.maxX, groundY, player); // wschód
+
+        // (opcjonalnie) pionowe słupki tylko w rogach
+        drawCorner(world, region.minX, region.minZ, player);
+        drawCorner(world, region.minX, region.maxZ, player);
+        drawCorner(world, region.maxX, region.minZ, player);
+        drawCorner(world, region.maxX, region.maxZ, player);
+    }
+
+    // ==== RYSOWANIE LINI KRAWĘDZI ====
+    private void drawLineX(World w, int fromX, int toX, int z, int y, Player p) {
+        for (int x = fromX; x <= toX; x += CLUSTER_SPACING) {
+            Location loc = new Location(w, x + 0.5, y, z + 0.5);
+            spawnCluster(p, loc);
+        }
+    }
+
+    private void drawLineZ(World w, int fromZ, int toZ, int x, int y, Player p) {
+        for (int z = fromZ; z <= toZ; z += CLUSTER_SPACING) {
+            Location loc = new Location(w, x + 0.5, y, z + 0.5);
+            spawnCluster(p, loc);
+        }
+    }
+
+    // ==== KLASER CZĄSTECZEK ====
+    private void spawnCluster(Player p, Location loc) {
+        p.spawnParticle(Particle.FLAME, loc, 8, CLUSTER_RADIUS, 0.15, CLUSTER_RADIUS, 0.01);
+        p.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 4, CLUSTER_RADIUS, 0.10, CLUSTER_RADIUS, 0.01);
+    }
+
+    // ==== (OPCJONALNIE) ROGI ====
+    private void drawCorner(World w, int x, int z, Player p) {
+        int minY = w.getMinHeight();
+        int maxY = w.getMaxHeight();
+        for (int y = minY; y <= maxY; y += 4) {                          // rzadszy słupek co 4 bloki
+            Location loc = new Location(w, x + 0.5, y, z + 0.5);
+            p.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0.01);
+        }
+    }
+
     // === SYSTEM WYŚWIETLANIA GRANIC DZIAŁEK ===
     // Mapa przechowująca aktywne granice dla każdego gracza
     private final Map<UUID, BukkitRunnable> playerBoundaryTasks = new HashMap<>();
@@ -1465,87 +1520,43 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         playerBoundaryTasks.put(player.getUniqueId(), task);
     }
 
-    private void showPlotBoundaries(ProtectedRegion region, Player player) {
-        World world = player.getWorld();
-        int playerY = player.getLocation().getBlockY();
-        int maxHeight = world.getMaxHeight() - 1; // Maksymalna wysokość mapy
-
-        // === PIONOWE SŁUPKI OGNIA WZDŁUŻ WSZYSTKICH KRAWĘDZI (co 10 bloków) ===
-        // Północna granica (Z = maxZ) - pionowe słupki co 10 bloków wzdłuż całej szerokości
-        for (int x = region.minX; x <= region.maxX; x += 10) {
-            createVerticalFireColumn(world, x, region.maxZ, playerY, maxHeight, player);
-        }
-        // Dodaj słupek na końcu północnej granicy jeśli nie jest wielokrotnością 10
-        if ((region.maxX - region.minX) % 10 != 0) {
-            createVerticalFireColumn(world, region.maxX, region.maxZ, playerY, maxHeight, player);
-        }
-
-        // Południowa granica (Z = minZ) - pionowe słupki co 10 bloków wzdłuż całej szerokości
-        for (int x = region.minX; x <= region.maxX; x += 10) {
-            createVerticalFireColumn(world, x, region.minZ, playerY, maxHeight, player);
-        }
-        // Dodaj słupek na końcu południowej granicy jeśli nie jest wielokrotnością 10
-        if ((region.maxX - region.minX) % 10 != 0) {
-            createVerticalFireColumn(world, region.maxX, region.minZ, playerY, maxHeight, player);
-        }
-
-        // Wschodnia granica (X = maxX) - pionowe słupki co 10 bloków wzdłuż całej długości
-        for (int z = region.minZ + 10; z < region.maxZ; z += 10) { // +10 i <maxZ aby uniknąć duplikowania rogów
-            createVerticalFireColumn(world, region.maxX, z, playerY, maxHeight, player);
-        }
-
-        // Zachodnia granica (X = minX) - pionowe słupki co 10 bloków wzdłuż całej długości
-        for (int z = region.minZ + 10; z < region.maxZ; z += 10) { // +10 i <maxZ aby uniknąć duplikowania rogów
-            createVerticalFireColumn(world, region.minX, z, playerY, maxHeight, player);
-        }
-
-        // === WYRÓŻNIONE ROGI DZIAŁKI - SPECJALNE PIONOWE SŁUPKI ===
-        int[][] corners = {
-            {region.minX, region.minZ}, // Róg SW
-            {region.maxX, region.minZ}, // Róg SE  
-            {region.maxX, region.maxZ}, // Róg NE
-            {region.minX, region.maxZ} // Róg NW
-        };
-
-        // Stwórz specjalne pionowe słupki w rogach z dodatkowymi efektami
-        for (int[] corner : corners) {
-            createEnhancedVerticalFireColumn(world, corner[0], corner[1], playerY, maxHeight, player);
-        }
-    }
-
+    // public void stopBoundaryParticles(Player player) {
+    //     BukkitRunnable task = playerBoundaryTasks.remove(player.getUniqueId());
+    //     if (task != null) {
+    //         task.cancel();
+    //     }
+    // }
     /**
-     * Tworzy pionowy słupek z cząsteczek ognia co 4 bloki w pionie
+     * Rysuje gęsty „pasek" cząsteczek ognia wzdłuż osi Z oraz w pionie (od
+     * voida do nieba).
      */
-    private void createVerticalFireColumn(World world, int x, int z, int startY, int endY, Player player) {
-        for (int y = startY; y <= endY; y += 4) {
-            Location loc = new Location(world, x + 0.5, y + 1, z + 0.5);
+    private void createHorizontalFireLineZ(World world,
+            int x, // stałe X tej krawędzi
+            int startZ, int endZ,
+            int y,
+            Player player) {
 
-            // Główne cząsteczki ognia - dobrze widoczne w dzień i w nocy
-            player.spawnParticle(Particle.FLAME, loc, 2, 0.1, 0.1, 0.1, 0.01);
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight();
 
-            // Dodatkowe cząsteczki dla lepszej widoczności
-            if (y % 8 == 0) { // Co drugi poziom dodaj więcej efektów
-                player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.2, 0, 0), 1, 0.05, 0.05, 0.05, 0.01);
+        // Gęstość pozioma: co 1 blok (możesz zmienić na 0.5 dla jeszcze większej gęstości)
+        for (int z = startZ; z <= endZ; z++) {
+            for (int dy = -4; dy <= 4; dy++) { // 9 bloków w pionie (od y-4 do y+4)
+                int py = y + dy;
+                if (py < minY || py > maxY) {
+                    continue;
+                }
+                Location loc = new Location(world, x + 0.5, py, z + 0.5);
+                player.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0.01);
+                player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 1, 0, 0, 0, 0.01);
             }
         }
-    }
 
-    /**
-     * Tworzy ulepszoną wersję pionowego słupka w rogach działki
-     */
-    private void createEnhancedVerticalFireColumn(World world, int x, int z, int startY, int endY, Player player) {
-        for (int y = startY; y <= endY; y += 3) { // Gęściej w rogach (co 3 bloki)
-            Location loc = new Location(world, x + 0.5, y + 1, z + 0.5);
-
-            // Intensywniejsze efekty w rogach
-            player.spawnParticle(Particle.FLAME, loc, 3, 0.15, 0.15, 0.15, 0.02);
-            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc.clone().add(0.2, 0, 0.2), 2, 0.1, 0.1, 0.1, 0.01);
-
-            // Specjalne efekty co kilka poziomów
-            if (y % 12 == 0) {
-                player.spawnParticle(Particle.REDSTONE, loc, 2, 0.1, 0.1, 0.1, 0.0,
-                        new Particle.DustOptions(Color.ORANGE, 1.5f));
-                player.spawnParticle(Particle.END_ROD, loc, 1, 0.05, 0.05, 0.05, 0.01);
+        // Dodatkowo linia od voida do nieba na każdym z
+        for (int z = startZ; z <= endZ; z++) {
+            for (int py = minY; py <= maxY; py += 3) { // co 3 bloki dla wydajności
+                Location loc = new Location(world, x + 0.5, py, z + 0.5);
+                player.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0.01);
             }
         }
     }
