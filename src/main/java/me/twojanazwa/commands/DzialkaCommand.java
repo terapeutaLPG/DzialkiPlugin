@@ -1430,71 +1430,14 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         public boolean allowBeaconBreak = false;
     }
 
-    // ==== STAŁE ====
-    private static final int CLUSTER_SPACING = 10;      // co ile bloków pojawia się klaster
-    private static final double CLUSTER_RADIUS = 0.3;   // rozrzut cząstek w klastrze
-
-    // ==== API =====
-    public void showPlotBoundaries(ProtectedRegion region, Player player) {
-
-        World world = player.getWorld();
-        int groundY = player.getLocation().getBlockY() + 1;   // 1 blok nad ziemią
-
-        // Linie wzdłuż osi X
-        drawLineX(world, region.minX, region.maxX, region.minZ, groundY, player); // południe
-        drawLineX(world, region.minX, region.maxX, region.maxZ, groundY, player); // północ
-
-        // Linie wzdłuż osi Z
-        drawLineZ(world, region.minZ, region.maxZ, region.minX, groundY, player); // zachód
-        drawLineZ(world, region.minZ, region.maxZ, region.maxX, groundY, player); // wschód
-
-        // (opcjonalnie) pionowe słupki tylko w rogach
-        drawCorner(world, region.minX, region.minZ, player);
-        drawCorner(world, region.minX, region.maxZ, player);
-        drawCorner(world, region.maxX, region.minZ, player);
-        drawCorner(world, region.maxX, region.maxZ, player);
-    }
-
-    // ==== RYSOWANIE LINI KRAWĘDZI ====
-    private void drawLineX(World w, int fromX, int toX, int z, int y, Player p) {
-        for (int x = fromX; x <= toX; x += CLUSTER_SPACING) {
-            Location loc = new Location(w, x + 0.5, y, z + 0.5);
-            spawnCluster(p, loc);
-        }
-    }
-
-    private void drawLineZ(World w, int fromZ, int toZ, int x, int y, Player p) {
-        for (int z = fromZ; z <= toZ; z += CLUSTER_SPACING) {
-            Location loc = new Location(w, x + 0.5, y, z + 0.5);
-            spawnCluster(p, loc);
-        }
-    }
-
-    // ==== KLASER CZĄSTECZEK ====
-    private void spawnCluster(Player p, Location loc) {
-        p.spawnParticle(Particle.FLAME, loc, 8, CLUSTER_RADIUS, 0.15, CLUSTER_RADIUS, 0.01);
-        p.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 4, CLUSTER_RADIUS, 0.10, CLUSTER_RADIUS, 0.01);
-    }
-
-    // ==== (OPCJONALNIE) ROGI ====
-    private void drawCorner(World w, int x, int z, Player p) {
-        int minY = w.getMinHeight();
-        int maxY = w.getMaxHeight();
-        for (int y = minY; y <= maxY; y += 4) {                          // rzadszy słupek co 4 bloki
-            Location loc = new Location(w, x + 0.5, y, z + 0.5);
-            p.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0.01);
-        }
-    }
-
     // === SYSTEM WYŚWIETLANIA GRANIC DZIAŁEK ===
     // Mapa przechowująca aktywne granice dla każdego gracza
     private final Map<UUID, BukkitRunnable> playerBoundaryTasks = new HashMap<>();
 
+    // Wywołuj to np. przy wejściu na działkę albo dołączeniu gracza
     public void scheduleBoundaryParticles(ProtectedRegion region, Player player) {
-        // Anuluj poprzedni task dla tego gracza jeśli istnieje
-        stopBoundaryParticles(player);
+        stopBoundaryParticles(player); // wyczyść stare efekty
 
-        // Stwórz nowy task wyświetlający granice
         BukkitRunnable task = new BukkitRunnable() {
             @Override
             public void run() {
@@ -1504,68 +1447,60 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     return;
                 }
 
-                // Sprawdź czy gracz jest nadal w pobliżu działki (15 bloków)
-                ProtectedRegion nearbyRegion = getNearbyRegion(player.getLocation(), 15);
-                if (nearbyRegion == null || !nearbyRegion.equals(region)) {
+                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 15);
+                if (nearby == null || !nearby.equals(region)) {
                     cancel();
                     playerBoundaryTasks.remove(player.getUniqueId());
                     return;
                 }
 
-                showPlotBoundaries(region, player);
+                showSolidPlotBorders(region, player);
             }
         };
 
-        task.runTaskTimer(plugin, 0L, 40L); // Co 2 sekundy (40 ticków) - lżej dla serwera
+        task.runTaskTimer(plugin, 0L, 40L); // co 2 sekundy
         playerBoundaryTasks.put(player.getUniqueId(), task);
     }
 
-    // public void stopBoundaryParticles(Player player) {
-    //     BukkitRunnable task = playerBoundaryTasks.remove(player.getUniqueId());
-    //     if (task != null) {
-    //         task.cancel();
-    //     }
-    // }
-    /**
-     * Rysuje gęsty „pasek" cząsteczek ognia wzdłuż osi Z oraz w pionie (od
-     * voida do nieba).
-     */
-    private void createHorizontalFireLineZ(World world,
-            int x, // stałe X tej krawędzi
-            int startZ, int endZ,
-            int y,
-            Player player) {
-
-        int minY = world.getMinHeight();
-        int maxY = world.getMaxHeight();
-
-        // Gęstość pozioma: co 1 blok (możesz zmienić na 0.5 dla jeszcze większej gęstości)
-        for (int z = startZ; z <= endZ; z++) {
-            for (int dy = -4; dy <= 4; dy++) { // 9 bloków w pionie (od y-4 do y+4)
-                int py = y + dy;
-                if (py < minY || py > maxY) {
-                    continue;
-                }
-                Location loc = new Location(world, x + 0.5, py, z + 0.5);
-                player.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0.01);
-                player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 1, 0, 0, 0, 0.01);
-            }
-        }
-
-        // Dodatkowo linia od voida do nieba na każdym z
-        for (int z = startZ; z <= endZ; z++) {
-            for (int py = minY; py <= maxY; py += 3) { // co 3 bloki dla wydajności
-                Location loc = new Location(world, x + 0.5, py, z + 0.5);
-                player.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0.01);
-            }
+    public void stopBoundaryParticles(Player player) {
+        BukkitRunnable old = playerBoundaryTasks.remove(player.getUniqueId());
+        if (old != null) {
+            old.cancel();
         }
     }
 
-    public void stopBoundaryParticles(Player player) {
-        BukkitRunnable task = playerBoundaryTasks.remove(player.getUniqueId());
-        if (task != null) {
-            task.cancel();
+    // ========================= GRANICE =========================
+    public void showSolidPlotBorders(ProtectedRegion region, Player player) {
+        World world = player.getWorld();
+        int y = player.getLocation().getBlockY() + 1;
+
+        drawSolidLineX(world, region.minX, region.maxX, region.minZ, y, player); // dół
+        drawSolidLineX(world, region.minX, region.maxX, region.maxZ, y, player); // góra
+        drawSolidLineZ(world, region.minZ, region.maxZ, region.minX, y, player); // lewa
+        drawSolidLineZ(world, region.minZ, region.maxZ, region.maxX, y, player); // prawa
+    }
+
+    // ========================= LINIA X =========================
+    private void drawSolidLineX(World world, int startX, int endX, int z, int y, Player player) {
+        for (int x = startX; x <= endX; x++) {
+            Location loc = new Location(world, x + 0.5, y, z + 0.5);
+            spawnFireParticles(player, loc);
         }
+    }
+
+    // ========================= LINIA Z =========================
+    private void drawSolidLineZ(World world, int startZ, int endZ, int x, int y, Player player) {
+        for (int z = startZ; z <= endZ; z++) {
+            Location loc = new Location(world, x + 0.5, y, z + 0.5);
+            spawnFireParticles(player, loc);
+        }
+    }
+
+    // ========================= PARTICLE PACK =========================
+    private void spawnFireParticles(Player player, Location loc) {
+        player.spawnParticle(Particle.FLAME, loc, 0, 0, 0, 0, 0);
+        player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 0, 0, 0, 0, 0);
+        player.spawnParticle(Particle.REDSTONE, loc, 0, 0.0, 0.0, 0.0, new Particle.DustOptions(org.bukkit.Color.RED, 1.2f));
     }
 
     // === AUTOMATYCZNE WYKRYWANIE DZIAŁEK ===
