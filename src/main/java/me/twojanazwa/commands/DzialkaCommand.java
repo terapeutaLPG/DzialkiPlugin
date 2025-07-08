@@ -1472,15 +1472,18 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
     }
 
-    // Metoda do cyklicznego wyświetlania granic na wielu poziomach
+    // Metoda do cyklicznego wyświetlania granic na wielu poziomach z płynną animacją
     public void scheduleBoundaryParticles(ProtectedRegion region, Player player) {
         stopBoundaryParticles(player); // Zatrzymaj poprzednie zadanie
 
-        int minY = Math.max(region.minY, player.getWorld().getMinHeight() + 5);
-        int maxY = Math.min(region.maxY, player.getWorld().getMaxHeight() - 5);
-        int yStep = 8; // Co ile bloków w pionie rysować granice
+        final int minY = Math.max(region.minY, player.getWorld().getMinHeight() + 5);
+        final int maxY = Math.min(region.maxY, player.getWorld().getMaxHeight() - 5);
+        final int yStep = 8; // Co ile bloków w pionie rysować granice
 
         BukkitRunnable task = new BukkitRunnable() {
+            private int animationTick = 0;
+            private final int animationCycle = 100; // Pełny cykl animacji (100 ticków = 5 sekund)
+
             @Override
             public void run() {
                 if (!player.isOnline()) {
@@ -1497,15 +1500,58 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     return;
                 }
 
-                // Wyświetl granice na wszystkich poziomach dla tego cyklu
+                // Oblicz intensywność na podstawie fali sinusoidalnej (0.0 - 1.0)
+                double intensity = (Math.sin(2 * Math.PI * animationTick / animationCycle) + 1.0) / 2.0;
+
+                // Wyświetl granice na wszystkich poziomach z animowaną intensywnością
                 for (int y = minY; y <= maxY; y += yStep) {
-                    showBoundaryParticles(region, player, y);
+                    showBoundaryParticlesAnimated(region, player, y, intensity);
                 }
+
+                animationTick = (animationTick + 1) % animationCycle;
             }
         };
 
-        task.runTaskTimer(plugin, 0L, 60L); // Co 3 sekundy (60 ticków)
+        task.runTaskTimer(plugin, 0L, 2L); // Co 2 ticki (10 razy na sekundę) dla płynnej animacji
         playerBoundaryTasks.put(player.getUniqueId(), task);
+    }
+
+    // Animowana wersja wyświetlania granic z kontrolą intensywności
+    public void showBoundaryParticlesAnimated(ProtectedRegion region, Player player, int y, double intensity) {
+        World world = player.getWorld();
+        int edgeStep = 2; // Gęstość particles na krawędziach (co 2 bloki dla lepszej wydajności)
+
+        // Górna krawędź (północ) - z = minZ
+        for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+            if (Math.random() < intensity) { // Probabilistyczne pojawianie się particles
+                Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
+                spawnFireParticlesAnimated(player, loc, intensity);
+            }
+        }
+
+        // Dolna krawędź (południe) - z = maxZ  
+        for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+            if (Math.random() < intensity) {
+                Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
+                spawnFireParticlesAnimated(player, loc, intensity);
+            }
+        }
+
+        // Lewa krawędź (zachód) - x = minX
+        for (int z = region.minZ + edgeStep; z < region.maxZ; z += edgeStep) {
+            if (Math.random() < intensity) {
+                Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
+                spawnFireParticlesAnimated(player, loc, intensity);
+            }
+        }
+
+        // Prawa krawędź (wschód) - x = maxX
+        for (int z = region.minZ + edgeStep; z < region.maxZ; z += edgeStep) {
+            if (Math.random() < intensity) {
+                Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
+                spawnFireParticlesAnimated(player, loc, intensity);
+            }
+        }
     }
 
     // ========================= PARTICLE PACK =========================
@@ -1513,6 +1559,37 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         player.spawnParticle(Particle.FLAME, loc, 0, 0, 0, 0, 0);
         player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 0, 0, 0, 0, 0);
         player.spawnParticle(Particle.REDSTONE, loc, 0, 0.0, 0.0, 0.0, new Particle.DustOptions(org.bukkit.Color.RED, 1.2f));
+    }
+
+    // Animowana wersja particles z kontrolą intensywności
+    private void spawnFireParticlesAnimated(Player player, Location loc, double intensity) {
+        // Oblicz liczbę particles na podstawie intensywności (1-4)
+        int particleCount = Math.max(1, (int) (intensity * 4));
+
+        // Oblicz rozrzut na podstawie intensywności (0.0 - 0.3)
+        double spread = intensity * 0.3;
+
+        // Oblicz rozmiar particles na podstawie intensywności
+        float particleSize = (float) (0.8 + intensity * 0.8); // 0.8 - 1.6
+
+        // FLAME particles z animowaną intensywnością
+        player.spawnParticle(Particle.FLAME, loc, particleCount, spread, 0.1, spread, 0.02);
+
+        // SOUL_FIRE_FLAME z mniejszą intensywnością
+        if (intensity > 0.3) {
+            player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, Math.max(1, particleCount / 2), spread, 0.1, spread, 0.01);
+        }
+
+        // REDSTONE particles z animowanym rozmiarem
+        if (intensity > 0.2) {
+            player.spawnParticle(Particle.REDSTONE, loc, particleCount, spread, 0.05, spread,
+                    new Particle.DustOptions(org.bukkit.Color.RED, particleSize));
+        }
+
+        // Dodatkowe efekty przy wysokiej intensywności
+        if (intensity > 0.7) {
+            player.spawnParticle(Particle.LAVA, loc, 1, 0.1, 0.1, 0.1, 0);
+        }
     }
 
     // === AUTOMATYCZNE WYKRYWANIE DZIAŁEK ===
@@ -1674,6 +1751,37 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             if (getRegion(onlinePlayer.getLocation()) == region) {
                 onlinePlayer.setPlayerTime(time, false);
             }
+        }
+    }
+
+    // ========================= GRANICE – publiczne API =========================
+    public void showSolidPlotBorders(ProtectedRegion region, Player player) {
+        World world = player.getWorld();
+        int y = player.getLocation().getBlockY() + 1;          // linia tuż nad ziemią
+
+        drawSolidLineX(world, region.minX, region.maxX, region.minZ, y, player); // południe
+        drawSolidLineX(world, region.minX, region.maxX, region.maxZ, y, player); // północ
+        drawSolidLineZ(world, region.minZ, region.maxZ, region.minX, y, player); // zachód
+        drawSolidLineZ(world, region.minZ, region.maxZ, region.maxX, y, player); // wschód
+    }
+
+    // ========================= L I N I A  X =========================
+    private void drawSolidLineX(World world,
+            int startX, int endX,
+            int z, int y,
+            Player player) {
+        for (int x = startX; x <= endX; x++) {
+            spawnFireParticles(player, new Location(world, x + 0.5, y, z + 0.5));
+        }
+    }
+
+    // ========================= L I N I A  Z =========================
+    private void drawSolidLineZ(World world,
+            int startZ, int endZ,
+            int x, int y,
+            Player player) {
+        for (int z = startZ; z <= endZ; z++) {
+            spawnFireParticles(player, new Location(world, x + 0.5, y, z + 0.5));
         }
     }
 }
