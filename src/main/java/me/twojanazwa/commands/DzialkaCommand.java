@@ -1468,65 +1468,75 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     private void showPlotBoundaries(ProtectedRegion region, Player player) {
         World world = player.getWorld();
 
-        // Wysokość od voida do maksymalnej wysokości
-        int minY = world.getMinHeight();
-        int maxY = world.getMaxHeight();
+        // Wysokość na której będą wyświetlane granice (wysokość gracza + 1)
+        int boundaryY = player.getLocation().getBlockY() + 1;
 
-        // === SŁUPY W ROGACH DZIAŁKI ===
+        // === POZIOME LINIE NA GRANICACH (co 10 bloków) ===
+        // Północna granica (Z = maxZ) - linia pozioma na całej szerokości
+        for (int x = region.minX; x <= region.maxX; x += 10) {
+            Location loc = new Location(world, x, boundaryY, region.maxZ);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.LIME, 1.5f));
+        }
+        // Dodaj particle na końcu granicy jeśli nie jest wielokrotnością 10
+        if ((region.maxX - region.minX) % 10 != 0) {
+            Location loc = new Location(world, region.maxX, boundaryY, region.maxZ);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.LIME, 1.5f));
+        }
+
+        // Południowa granica (Z = minZ) - linia pozioma na całej szerokości
+        for (int x = region.minX; x <= region.maxX; x += 10) {
+            Location loc = new Location(world, x, boundaryY, region.minZ);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.LIME, 1.5f));
+        }
+        // Dodaj particle na końcu granicy jeśli nie jest wielokrotnością 10
+        if ((region.maxX - region.minX) % 10 != 0) {
+            Location loc = new Location(world, region.maxX, boundaryY, region.minZ);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.LIME, 1.5f));
+        }
+
+        // Wschodnia granica (X = maxX) - linia pozioma na całej długości
+        for (int z = region.minZ; z <= region.maxZ; z += 10) {
+            Location loc = new Location(world, region.maxX, boundaryY, z);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.AQUA, 1.5f));
+        }
+        // Dodaj particle na końcu granicy jeśli nie jest wielokrotnością 10
+        if ((region.maxZ - region.minZ) % 10 != 0) {
+            Location loc = new Location(world, region.maxX, boundaryY, region.maxZ);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.AQUA, 1.5f));
+        }
+
+        // Zachodnia granica (X = minX) - linia pozioma na całej długości
+        for (int z = region.minZ; z <= region.maxZ; z += 10) {
+            Location loc = new Location(world, region.minX, boundaryY, z);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.AQUA, 1.5f));
+        }
+        // Dodaj particle na końcu granicy jeśli nie jest wielokrotnością 10
+        if ((region.maxZ - region.minZ) % 10 != 0) {
+            Location loc = new Location(world, region.minX, boundaryY, region.maxZ);
+            player.spawnParticle(Particle.REDSTONE, loc, 3, 0.2, 0.2, 0.2, 0.0,
+                    new Particle.DustOptions(Color.AQUA, 1.5f));
+        }
+
+        // === WYRÓŻNIONE ROGI DZIAŁKI ===
         Location[] corners = {
-            new Location(world, region.minX, minY, region.minZ), // Róg SW
-            new Location(world, region.maxX, minY, region.minZ), // Róg SE  
-            new Location(world, region.maxX, minY, region.maxZ), // Róg NE
-            new Location(world, region.minX, minY, region.maxZ) // Róg NW
+            new Location(world, region.minX, boundaryY, region.minZ), // Róg SW
+            new Location(world, region.maxX, boundaryY, region.minZ), // Róg SE  
+            new Location(world, region.maxX, boundaryY, region.maxZ), // Róg NE
+            new Location(world, region.minX, boundaryY, region.maxZ) // Róg NW
         };
 
-        // Stwórz słupy cząsteczek w rogach
+        // Wyróżnij rogi większymi i jaśniejszymi cząsteczkami
         for (Location corner : corners) {
-            for (int y = minY; y <= maxY; y += 3) { // Co 3 bloki wysokości
-                Location particleLocation = corner.clone();
-                particleLocation.setY(y);
-
-                // Użyj kolorowych cząsteczek
-                player.spawnParticle(Particle.SOUL_FIRE_FLAME, particleLocation, 2, 0.1, 0.1, 0.1, 0.01);
-                player.spawnParticle(Particle.FLAME, particleLocation.clone().add(0.5, 0, 0), 1, 0.1, 0.1, 0.1, 0.01);
-            }
-        }
-
-        // === LINIE NA GRANICACH ===
-        // Północna granica (Z = maxZ)
-        for (int x = region.minX; x <= region.maxX; x += 2) {
-            for (int y = minY; y <= maxY; y += 5) {
-                Location loc = new Location(world, x, y, region.maxZ);
-                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
-                        new Particle.DustOptions(Color.LIME, 1.0f));
-            }
-        }
-
-        // Południowa granica (Z = minZ)  
-        for (int x = region.minX; x <= region.maxX; x += 2) {
-            for (int y = minY; y <= maxY; y += 5) {
-                Location loc = new Location(world, x, y, region.minZ);
-                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
-                        new Particle.DustOptions(Color.LIME, 1.0f));
-            }
-        }
-
-        // Wschodnia granica (X = maxX)
-        for (int z = region.minZ; z <= region.maxZ; z += 2) {
-            for (int y = minY; y <= maxY; y += 5) {
-                Location loc = new Location(world, region.maxX, y, z);
-                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
-                        new Particle.DustOptions(Color.LIME, 1.0f));
-            }
-        }
-
-        // Zachodnia granica (X = minX)
-        for (int z = region.minZ; z <= region.maxZ; z += 2) {
-            for (int y = minY; y <= maxY; y += 5) {
-                Location loc = new Location(world, region.minX, y, z);
-                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
-                        new Particle.DustOptions(Color.LIME, 1.0f));
-            }
+            player.spawnParticle(Particle.SOUL_FIRE_FLAME, corner, 5, 0.3, 0.3, 0.3, 0.02);
+            player.spawnParticle(Particle.REDSTONE, corner, 5, 0.3, 0.3, 0.3, 0.0,
+                    new Particle.DustOptions(Color.YELLOW, 2.0f));
         }
     }
 
