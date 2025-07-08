@@ -1,5 +1,6 @@
 name: DzialkiPlugin
-version: 1.0
+version: 2.0
+author: jaruso99
 main: me.twojanazwa.App # <- musisz tu mieć klasę App, a nie Main
 api-version: 1.16
 

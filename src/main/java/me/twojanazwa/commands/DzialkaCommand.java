@@ -422,6 +422,23 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
                     return true;
                 }
+                case "help" -> {
+                    gracz.sendMessage("§a========================================");
+                    gracz.sendMessage("§6     DzialkiPlugin v2.0 - jaruso99");
+                    gracz.sendMessage("§a========================================");
+                    gracz.sendMessage("§7Dostępne komendy:");
+                    gracz.sendMessage("§e/dzialka stworz <nazwa> §7- tworzy działkę");
+                    gracz.sendMessage("§e/dzialka usun <nazwa> §7- usuwa działkę");
+                    gracz.sendMessage("§e/dzialka tp <nazwa> §7- teleportuje na działkę");
+                    gracz.sendMessage("§e/dzialka panel <nazwa> §7- otwiera panel GUI");
+                    gracz.sendMessage("§e/dzialka lista §7- lista twoich działek");
+                    gracz.sendMessage("§e/dzialka zapros <nazwa> <nick> §7- zaprasza gracza");
+                    gracz.sendMessage("§e/dzialka warp <nazwa> §7- teleportuje do warpu");
+                    gracz.sendMessage("§e/dzialka stworzwarp <nazwa> §7- ustawia warp");
+                    gracz.sendMessage("§e/dzialka top §7- ranking działek");
+                    gracz.sendMessage("§a========================================");
+                    return true;
+                }
                 default -> {
                     gracz.sendMessage("§eNieznana komenda. Użyj /dzialka help");
                     return true;
@@ -447,7 +464,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         if (args.length == 1) {
             completions.addAll(List.of(
                     "stworz", "usun", "tp", "lista", "panel", "warp", "stworzwarp", "top",
-                    "zapros", "opusc", "zastepca", "admintp", "adminusun", "test", "debug"
+                    "zapros", "opusc", "zastepca", "admintp", "adminusun", "test", "debug", "help"
             ));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase()) {
@@ -918,6 +935,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         ItemMeta sepMeta = separator.getItemMeta();
         if (sepMeta != null) {
             sepMeta.setDisplayName("§7▬▬▬ " + r.plotName + " ▬▬▬");
+            sepMeta.setLore(List.of("§8DzialkiPlugin v2.0 by jaruso99"));
             separator.setItemMeta(sepMeta);
         }
 
