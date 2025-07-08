@@ -1,5 +1,17 @@
 package me.twojanazwa.commands;
 
+/**
+ * Plugin Działek WERSJA 2.0
+ *
+ * Autor: jaruso99
+ *
+ * Zaawansowany system zarządzania działkami z GUI i wizualizacją granic przez
+ * cząsteczki. Funkcje: tworzenie działek, zarządzanie uprawnieniami, system
+ * punktów, rynek działek.
+ *
+ * @author jaruso99
+ * @version 2.0
+ */
 import java.io.File;
 import java.io.IOException;
 import java.text.SimpleDateFormat;
@@ -14,10 +26,12 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Particle;
+import org.bukkit.World;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
@@ -422,23 +436,6 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
                     return true;
                 }
-                case "help" -> {
-                    gracz.sendMessage("§a========================================");
-                    gracz.sendMessage("§6     DzialkiPlugin v2.0 - jaruso99");
-                    gracz.sendMessage("§a========================================");
-                    gracz.sendMessage("§7Dostępne komendy:");
-                    gracz.sendMessage("§e/dzialka stworz <nazwa> §7- tworzy działkę");
-                    gracz.sendMessage("§e/dzialka usun <nazwa> §7- usuwa działkę");
-                    gracz.sendMessage("§e/dzialka tp <nazwa> §7- teleportuje na działkę");
-                    gracz.sendMessage("§e/dzialka panel <nazwa> §7- otwiera panel GUI");
-                    gracz.sendMessage("§e/dzialka lista §7- lista twoich działek");
-                    gracz.sendMessage("§e/dzialka zapros <nazwa> <nick> §7- zaprasza gracza");
-                    gracz.sendMessage("§e/dzialka warp <nazwa> §7- teleportuje do warpu");
-                    gracz.sendMessage("§e/dzialka stworzwarp <nazwa> §7- ustawia warp");
-                    gracz.sendMessage("§e/dzialka top §7- ranking działek");
-                    gracz.sendMessage("§a========================================");
-                    return true;
-                }
                 default -> {
                     gracz.sendMessage("§eNieznana komenda. Użyj /dzialka help");
                     return true;
@@ -464,7 +461,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         if (args.length == 1) {
             completions.addAll(List.of(
                     "stworz", "usun", "tp", "lista", "panel", "warp", "stworzwarp", "top",
-                    "zapros", "opusc", "zastepca", "admintp", "adminusun", "test", "debug", "help"
+                    "zapros", "opusc", "zastepca", "admintp", "adminusun", "test", "debug"
             ));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase()) {
@@ -493,10 +490,14 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     // Poniższe metody zostały przeniesione poza blok switch
-    public void stopParticles(ProtectedRegion region) {  // zmieniono z package-private na public
-        BukkitRunnable task = particleTasks.remove(region);
-        if (task != null) {
-            task.cancel();
+    public void stopParticles(ProtectedRegion region) {
+        // Stara metoda - teraz przekierowuje do nowego systemu
+        // Znajdź wszystkich graczy którzy mogą oglądać tę działkę i zatrzymaj im cząsteczki
+        for (Player player : Bukkit.getOnlinePlayers()) {
+            ProtectedRegion nearbyRegion = getNearbyRegion(player.getLocation(), 15);
+            if (nearbyRegion != null && nearbyRegion.equals(region)) {
+                stopBoundaryParticles(player);
+            }
         }
     }
 
@@ -935,7 +936,6 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         ItemMeta sepMeta = separator.getItemMeta();
         if (sepMeta != null) {
             sepMeta.setDisplayName("§7▬▬▬ " + r.plotName + " ▬▬▬");
-            sepMeta.setLore(List.of("§8DzialkiPlugin v2.0 by jaruso99"));
             separator.setItemMeta(sepMeta);
         }
 
@@ -1431,42 +1431,197 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         public boolean allowBeaconBreak = false;
     }
 
-    // === BRAKUJĄCE METODY ===
+    // === SYSTEM WYŚWIETLANIA GRANIC DZIAŁEK ===
+    // Mapa przechowująca aktywne granice dla każdego gracza
+    private final Map<UUID, BukkitRunnable> playerBoundaryTasks = new HashMap<>();
+
     public void scheduleBoundaryParticles(ProtectedRegion region, Player player) {
-        // Logika wyświetlania cząsteczek na granicach działki
+        // Anuluj poprzedni task dla tego gracza jeśli istnieje
+        stopBoundaryParticles(player);
+
+        // Stwórz nowy task wyświetlający granice
         BukkitRunnable task = new BukkitRunnable() {
             @Override
             public void run() {
                 if (!player.isOnline()) {
                     cancel();
+                    playerBoundaryTasks.remove(player.getUniqueId());
                     return;
                 }
 
-                // Wyświetl cząsteczki na granicach działki
-                for (int x = region.minX; x <= region.maxX; x += 5) {
-                    for (int z = region.minZ; z <= region.maxZ; z += 5) {
-                        Location loc1 = new Location(player.getWorld(), x, region.minY + 1, region.minZ);
-                        Location loc2 = new Location(player.getWorld(), x, region.minY + 1, region.maxZ);
-                        Location loc3 = new Location(player.getWorld(), region.minX, region.minY + 1, z);
-                        Location loc4 = new Location(player.getWorld(), region.maxX, region.minY + 1, z);
-
-                        player.spawnParticle(Particle.REDSTONE, loc1, 1);
-                        player.spawnParticle(Particle.REDSTONE, loc2, 1);
-                        player.spawnParticle(Particle.REDSTONE, loc3, 1);
-                        player.spawnParticle(Particle.REDSTONE, loc4, 1);
-                    }
+                // Sprawdź czy gracz jest nadal w pobliżu działki (15 bloków)
+                ProtectedRegion nearbyRegion = getNearbyRegion(player.getLocation(), 15);
+                if (nearbyRegion == null || !nearbyRegion.equals(region)) {
+                    cancel();
+                    playerBoundaryTasks.remove(player.getUniqueId());
+                    return;
                 }
+
+                showPlotBoundaries(region, player);
             }
         };
 
-        task.runTaskTimer(plugin, 0L, 20L); // Co sekundę
-        particleTasks.put(region, task);
+        task.runTaskTimer(plugin, 0L, 20L); // Co sekundę (20 ticków)
+        playerBoundaryTasks.put(player.getUniqueId(), task);
+    }
 
-        // Zatrzymaj po 30 sekundach
-        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+    private void showPlotBoundaries(ProtectedRegion region, Player player) {
+        World world = player.getWorld();
+
+        // Wysokość od voida do maksymalnej wysokości
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight();
+
+        // === SŁUPY W ROGACH DZIAŁKI ===
+        Location[] corners = {
+            new Location(world, region.minX, minY, region.minZ), // Róg SW
+            new Location(world, region.maxX, minY, region.minZ), // Róg SE  
+            new Location(world, region.maxX, minY, region.maxZ), // Róg NE
+            new Location(world, region.minX, minY, region.maxZ) // Róg NW
+        };
+
+        // Stwórz słupy cząsteczek w rogach
+        for (Location corner : corners) {
+            for (int y = minY; y <= maxY; y += 3) { // Co 3 bloki wysokości
+                Location particleLocation = corner.clone();
+                particleLocation.setY(y);
+
+                // Użyj kolorowych cząsteczek
+                player.spawnParticle(Particle.SOUL_FIRE_FLAME, particleLocation, 2, 0.1, 0.1, 0.1, 0.01);
+                player.spawnParticle(Particle.FLAME, particleLocation.clone().add(0.5, 0, 0), 1, 0.1, 0.1, 0.1, 0.01);
+            }
+        }
+
+        // === LINIE NA GRANICACH ===
+        // Północna granica (Z = maxZ)
+        for (int x = region.minX; x <= region.maxX; x += 2) {
+            for (int y = minY; y <= maxY; y += 5) {
+                Location loc = new Location(world, x, y, region.maxZ);
+                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
+                        new Particle.DustOptions(Color.LIME, 1.0f));
+            }
+        }
+
+        // Południowa granica (Z = minZ)  
+        for (int x = region.minX; x <= region.maxX; x += 2) {
+            for (int y = minY; y <= maxY; y += 5) {
+                Location loc = new Location(world, x, y, region.minZ);
+                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
+                        new Particle.DustOptions(Color.LIME, 1.0f));
+            }
+        }
+
+        // Wschodnia granica (X = maxX)
+        for (int z = region.minZ; z <= region.maxZ; z += 2) {
+            for (int y = minY; y <= maxY; y += 5) {
+                Location loc = new Location(world, region.maxX, y, z);
+                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
+                        new Particle.DustOptions(Color.LIME, 1.0f));
+            }
+        }
+
+        // Zachodnia granica (X = minX)
+        for (int z = region.minZ; z <= region.maxZ; z += 2) {
+            for (int y = minY; y <= maxY; y += 5) {
+                Location loc = new Location(world, region.minX, y, z);
+                player.spawnParticle(Particle.REDSTONE, loc, 1, 0.0, 0.0, 0.0, 0.0,
+                        new Particle.DustOptions(Color.LIME, 1.0f));
+            }
+        }
+    }
+
+    public void stopBoundaryParticles(Player player) {
+        BukkitRunnable task = playerBoundaryTasks.remove(player.getUniqueId());
+        if (task != null) {
             task.cancel();
-            particleTasks.remove(region);
-        }, 600L);
+        }
+    }
+
+    // === AUTOMATYCZNE WYKRYWANIE DZIAŁEK ===
+    @EventHandler
+    public void onPlayerMove(org.bukkit.event.player.PlayerMoveEvent event) {
+        Player player = event.getPlayer();
+        Location from = event.getFrom();
+        Location to = event.getTo();
+
+        if (to == null) {
+            return;
+        }
+
+        // Sprawdź tylko jeśli gracz przeszedł do innego bloku
+        if (from.getBlockX() == to.getBlockX()
+                && from.getBlockZ() == to.getBlockZ()) {
+            return;
+        }
+
+        ProtectedRegion currentRegion = getRegion(to);
+        ProtectedRegion previousRegion = getRegion(from);
+
+        // Jeśli wszedł na nową działkę
+        if (currentRegion != null && !currentRegion.equals(previousRegion)) {
+            showBossBar(currentRegion, player);
+            scheduleBoundaryParticles(currentRegion, player);
+        } // Jeśli wyszedł z działki
+        else if (currentRegion == null && previousRegion != null) {
+            stopBoundaryParticles(player);
+            BossBar bossBar = bossBary.remove(player.getUniqueId());
+            if (bossBar != null) {
+                bossBar.removeAll();
+                bossBar.setVisible(false);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+
+        // Po 1 sekundzie sprawdź czy gracz jest na działce
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            ProtectedRegion region = getRegion(player.getLocation());
+            if (region != null) {
+                showBossBar(region, player);
+                scheduleBoundaryParticles(region, player);
+            }
+        }, 20L);
+    }
+
+    @EventHandler
+    public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        stopBoundaryParticles(player);
+
+        BossBar bossBar = bossBary.remove(player.getUniqueId());
+        if (bossBar != null) {
+            bossBar.removeAll();
+            bossBar.setVisible(false);
+        }
+    }
+
+    @EventHandler
+    public void onPlayerTeleport(org.bukkit.event.player.PlayerTeleportEvent event) {
+        Player player = event.getPlayer();
+        Location to = event.getTo();
+
+        if (to == null) {
+            return;
+        }
+
+        // Po teleportacji sprawdź działkę
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            ProtectedRegion region = getRegion(to);
+            if (region != null) {
+                showBossBar(region, player);
+                scheduleBoundaryParticles(region, player);
+            } else {
+                stopBoundaryParticles(player);
+                BossBar bossBar = bossBary.remove(player.getUniqueId());
+                if (bossBar != null) {
+                    bossBar.removeAll();
+                    bossBar.setVisible(false);
+                }
+            }
+        }, 10L);
     }
 
     public void showBossBar(ProtectedRegion region, Player player) {

@@ -3,6 +3,7 @@ version: 2.0
 author: jaruso99
 main: me.twojanazwa.App # <- musisz tu mieć klasę App, a nie Main
 api-version: 1.16
+description: Zaawansowany plugin działek z systemem GUI i granic particle - WERSJA 2.0
 
 commands:
   dzialka:

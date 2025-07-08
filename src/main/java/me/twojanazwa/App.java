@@ -36,11 +36,6 @@ public class App extends JavaPlugin {
             }
         }, 6000L, 6000L);
 
-        getLogger().info("§a========================================");
-        getLogger().info("§6     Plugin DzialkiPlugin v2.0");
-        getLogger().info("§7     Autor: §ejaruso99");
-        getLogger().info("§7     System działek dla Minecraft");
-        getLogger().info("§a========================================");
         getLogger().info("Plugin dzialkiplugin został włączony!");
     }
 
