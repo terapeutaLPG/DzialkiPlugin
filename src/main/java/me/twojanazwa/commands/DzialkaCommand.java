@@ -1051,12 +1051,17 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     private ItemStack toggleItem(boolean enabled, String name, String description, Material material) {
         ItemStack item = new ItemStack(material);
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(enabled ? "§a" + name : "§c" + name);
-        List<String> lore = new ArrayList<>();
-        lore.add(description);
-        lore.add(enabled ? "§7Kliknij, aby wyłączyć" : "§7Kliknij, aby włączyć");
-        meta.setLore(lore);
-        item.setItemMeta(meta);
+        if (meta != null) {
+            meta.setDisplayName(enabled ? "§a" + name : "§c" + name);
+            List<String> lore = new ArrayList<>();
+            lore.add(description);
+            lore.add("");
+            lore.add("§7Stan: " + (enabled ? "§aWłączone" : "§cWyłączone"));
+            lore.add("");
+            lore.add(enabled ? "§7Kliknij, aby wyłączyć" : "§7Kliknij, aby włączyć");
+            meta.setLore(lore);
+            item.setItemMeta(meta);
+        }
         return item;
     }
 
@@ -1192,63 +1197,84 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             return;
         }
 
+        // Zmienna do sprawdzenia czy nastąpiła zmiana
+        boolean changed = false;
+        String message = "";
+
         // Obsługa przełączania ustawień
-        if (displayName.contains("§f§lLatanie dla gości")) {
+        if (displayName.contains("§f§lLatanie dla gości") || displayName.contains("§a§f§lLatanie dla gości") || displayName.contains("§c§f§lLatanie dla gości")) {
             region.allowFlight = !region.allowFlight;
-            player.sendMessage(region.allowFlight
+            message = region.allowFlight
                     ? "§aLatanie dla gości włączone!"
-                    : "§cLatanie dla gości wyłączone!");
-        } else if (displayName.contains("§f§lWejście na działkę")) {
+                    : "§cLatanie dla gości wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lWejście na działkę") || displayName.contains("§a§f§lWejście na działkę") || displayName.contains("§c§f§lWejście na działkę")) {
             region.allowEnter = !region.allowEnter;
-            player.sendMessage(region.allowEnter
+            message = region.allowEnter
                     ? "§aWejście na działkę włączone!"
-                    : "§cWejście na działkę wyłączone!");
-        } else if (displayName.contains("§f§lStawianie bloków")) {
+                    : "§cWejście na działkę wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lStawianie bloków") || displayName.contains("§a§f§lStawianie bloków") || displayName.contains("§c§f§lStawianie bloków")) {
             region.allowBuild = !region.allowBuild;
-            player.sendMessage(region.allowBuild
+            message = region.allowBuild
                     ? "§aStawianie bloków włączone!"
-                    : "§cStawianie bloków wyłączone!");
-        } else if (displayName.contains("§f§lNiszczenie bloków")) {
+                    : "§cStawianie bloków wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lNiszczenie bloków") || displayName.contains("§a§f§lNiszczenie bloków") || displayName.contains("§c§f§lNiszczenie bloków")) {
             region.allowDestroy = !region.allowDestroy;
-            player.sendMessage(region.allowDestroy
+            message = region.allowDestroy
                     ? "§aNiszczenie bloków włączone!"
-                    : "§cNiszczenie bloków wyłączone!");
-        } else if (displayName.contains("§f§lOtwieranie skrzyń")) {
+                    : "§cNiszczenie bloków wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lOtwieranie skrzyń") || displayName.contains("§a§f§lOtwieranie skrzyń") || displayName.contains("§c§f§lOtwieranie skrzyń")) {
             region.allowChest = !region.allowChest;
-            player.sendMessage(region.allowChest
+            message = region.allowChest
                     ? "§aOtwieranie skrzyń włączone!"
-                    : "§cOtwieranie skrzyń wyłączone!");
-        } else if (displayName.contains("§f§lPodnoszenie itemów")) {
+                    : "§cOtwieranie skrzyń wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lPodnoszenie itemów") || displayName.contains("§a§f§lPodnoszenie itemów") || displayName.contains("§c§f§lPodnoszenie itemów")) {
             region.allowPickup = !region.allowPickup;
-            player.sendMessage(region.allowPickup
+            message = region.allowPickup
                     ? "§aPodnoszenie itemów włączone!"
-                    : "§cPodnoszenie itemów wyłączone!");
-        } else if (displayName.contains("§f§lRzucanie mikstur")) {
+                    : "§cPodnoszenie itemów wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lRzucanie mikstur") || displayName.contains("§a§f§lRzucanie mikstur") || displayName.contains("§c§f§lRzucanie mikstur")) {
             region.allowPotion = !region.allowPotion;
-            player.sendMessage(region.allowPotion
+            message = region.allowPotion
                     ? "§aRzucanie mikstur włączone!"
-                    : "§cRzucanie mikstur wyłączone!");
-        } else if (displayName.contains("§f§lBicie mobów")) {
+                    : "§cRzucanie mikstur wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lBicie mobów") || displayName.contains("§a§f§lBicie mobów") || displayName.contains("§c§f§lBicie mobów")) {
             region.allowKillMobs = !region.allowKillMobs;
-            player.sendMessage(region.allowKillMobs
+            message = region.allowKillMobs
                     ? "§aBicie mobów włączone!"
-                    : "§cBicie mobów wyłączone!");
-        } else if (displayName.contains("§f§lRespienie mobów")) {
+                    : "§cBicie mobów wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lRespienie mobów") || displayName.contains("§a§f§lRespienie mobów") || displayName.contains("§c§f§lRespienie mobów")) {
             region.allowSpawnMobs = !region.allowSpawnMobs;
-            player.sendMessage(region.allowSpawnMobs
+            message = region.allowSpawnMobs
                     ? "§aRespienie mobów włączone!"
-                    : "§cRespienie mobów wyłączone!");
-        } else if (displayName.contains("§f§lCzas na działce")) {
+                    : "§cRespienie mobów wyłączone!";
+            changed = true;
+        } else if (displayName.contains("§f§lCzas na działce") || displayName.contains("§a§f§lCzas na działce") || displayName.contains("§c§f§lCzas na działce")) {
             region.isDay = !region.isDay;
             updateTimeForPlayersInRegion(region, player);
-            player.sendMessage(region.isDay
+            message = region.isDay
                     ? "§aWłączono dzień na działce!"
-                    : "§aWłączono noc na działce!");
+                    : "§aWłączono noc na działce!";
+            changed = true;
         }
 
-        // Zapisz zmiany i odśwież panel
-        savePlots();
-        openSettingsPanel(region, player);
+        // Jeśli nastąpiła zmiana, zapisz i odśwież panel
+        if (changed) {
+            player.sendMessage(message);
+            savePlots();
+
+            // Odśwież panel z nowymi stanami
+            Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                openSettingsPanel(region, player);
+            }, 1L);
+        }
     }
 
     // === OBSŁUGA PANELU PUNKTÓW ===
