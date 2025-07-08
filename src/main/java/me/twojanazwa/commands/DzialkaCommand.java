@@ -31,6 +31,8 @@ import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Particle;
 import org.bukkit.World;
+import org.bukkit.boss.BarColor;
+import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -1340,15 +1342,23 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // === METODY PUBLICZNE DLA LISTENERÓW ===
     public void showBossBar(ProtectedRegion region, Player player) {
-        // Zastępcza implementacja - można rozbudować w przyszłości
+        // Remove existing BossBar for the player if present
         BossBar existingBar = bossBary.get(player.getUniqueId());
         if (existingBar != null) {
             existingBar.setVisible(false);
             existingBar.removeAll();
         }
 
-        // Możesz dodać tutaj logikę tworzenia nowego boss bara
-        // Na razie pozostawiam pustą implementację
+        // Create a new BossBar with the desired text and style
+        String barText = "§eDziałka: §a" + region.plotName + " §e| Właściciel: §b" + region.owner;
+        BossBar bossBar = Bukkit.createBossBar(barText, BarColor.PURPLE, BarStyle.SEGMENTED_10);
+
+        // Add the player to the BossBar
+        bossBar.addPlayer(player);
+        bossBar.setVisible(true);
+
+        // Store the BossBar for future reference
+        bossBary.put(player.getUniqueId(), bossBar);
     }
 
     public void stopParticles(ProtectedRegion region) {
@@ -1488,7 +1498,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // ========================= NOWY SYSTEM GRANIC =========================
     // Główna metoda do wyświetlania granic na określonej wysokości z płynną animacją
-    public void showBoundaryParticles(ProtectedRegion region, Player player, int baseY, int offset) {
+    public void showBoundaryParticles(ProtectedRegion region, Player player, int y, int offset) {
         World world = player.getWorld();
         int edgeStep = 3; // Zwiększona odległość między cząsteczkami dla mniejszego lagu
 
@@ -1502,43 +1512,40 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
         int currentPoint = 0;
 
-        // Iteracja po poziomach od voida do nieba
-        for (int y = baseY; y >= world.getMinHeight() && y <= world.getMaxHeight(); y += edgeStep) {
-            // Górna krawędź (północ) - z = minZ
-            for (int x = region.minX; x <= region.maxX && currentPoint < endPoint; x += edgeStep) {
-                if (currentPoint >= startPoint) {
-                    Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
-                    spawnSmoothFireParticles(player, loc);
-                }
-                currentPoint++;
+        // Górna krawędź (północ) - z = minZ
+        for (int x = region.minX; x <= region.maxX && currentPoint < endPoint; x += edgeStep) {
+            if (currentPoint >= startPoint) {
+                Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
+                spawnSmoothFireParticles(player, loc);
             }
+            currentPoint++;
+        }
 
-            // Dolna krawędź (południe) - z = maxZ
-            for (int x = region.minX; x <= region.maxX && currentPoint < endPoint; x += edgeStep) {
-                if (currentPoint >= startPoint) {
-                    Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
-                    spawnSmoothFireParticles(player, loc);
-                }
-                currentPoint++;
+        // Dolna krawędź (południe) - z = maxZ  
+        for (int x = region.minX; x <= region.maxX && currentPoint < endPoint; x += edgeStep) {
+            if (currentPoint >= startPoint) {
+                Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
+                spawnSmoothFireParticles(player, loc);
             }
+            currentPoint++;
+        }
 
-            // Lewa krawędź (zachód) - x = minX
-            for (int z = region.minZ + edgeStep; z < region.maxZ && currentPoint < endPoint; z += edgeStep) {
-                if (currentPoint >= startPoint) {
-                    Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
-                    spawnSmoothFireParticles(player, loc);
-                }
-                currentPoint++;
+        // Lewa krawędź (zachód) - x = minX
+        for (int z = region.minZ + edgeStep; z < region.maxZ && currentPoint < endPoint; z += edgeStep) {
+            if (currentPoint >= startPoint) {
+                Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
+                spawnSmoothFireParticles(player, loc);
             }
+            currentPoint++;
+        }
 
-            // Prawa krawędź (wschód) - x = maxX
-            for (int z = region.minZ + edgeStep; z < region.maxZ && currentPoint < endPoint; z += edgeStep) {
-                if (currentPoint >= startPoint) {
-                    Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
-                    spawnSmoothFireParticles(player, loc);
-                }
-                currentPoint++;
+        // Prawa krawędź (wschód) - x = maxX
+        for (int z = region.minZ + edgeStep; z < region.maxZ && currentPoint < endPoint; z += edgeStep) {
+            if (currentPoint >= startPoint) {
+                Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
+                spawnSmoothFireParticles(player, loc);
             }
+            currentPoint++;
         }
     }
 
@@ -1590,13 +1597,60 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // ========================= PARTICLE PACK =========================
     private void spawnSmoothFireParticles(Player player, Location loc) {
-        // Implementacja wyświetlania cząsteczek
-        player.spawnParticle(Particle.FLAME, loc, 1, 0, 0, 0, 0);
+        // Delikatne cząsteczki z mniejszą liczbą i rozproszeniem
+        double spread = 0.3;
+        int count = 2; // Zmniejszona liczba cząsteczek
+
+        // FLAME – ciepła mgiełka (mniej intensywna)
+        player.spawnParticle(Particle.FLAME, loc, count, spread, spread * 0.5, spread, 0.01);
+
+        // REDSTONE – pomarańczowa poświata (rzadziej)
+        if (Math.random() < 0.3) { // Tylko 30% szans na dodatkową cząsteczkę
+            player.spawnParticle(Particle.REDSTONE, loc, 1, spread * 0.4, spread * 0.4, spread * 0.4,
+                    new Particle.DustOptions(org.bukkit.Color.ORANGE, 0.3f));
+        }
+    }
+
+    // Stara metoda - pozostawiam dla kompatybilności
+    private void spawnFireParticles(Player player, Location loc) {
+        spawnSmoothFireParticles(player, loc);
     }
 
     // === BRAKUJĄCE METODY - IMPLEMENTACJE ZASTĘPCZE ===
     private void openTopPanel(Player player, int page) {
         // Zastępcza implementacja - można rozbudować w przyszłości
         player.sendMessage("§eRanking działek - funkcja w rozwoju!");
+    }
+
+    public void showBoundaryParticlesVertical(ProtectedRegion region, Player player, int edgeStep) {
+        World world = player.getWorld();
+        int minY = world.getMinHeight();
+        int maxY = world.getMaxHeight();
+
+        for (int y = minY; y <= maxY; y += edgeStep) {
+            // Górna krawędź (północ) - z = minZ
+            for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+                Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
+                spawnSmoothFireParticles(player, loc);
+            }
+
+            // Dolna krawędź (południe) - z = maxZ
+            for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+                Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
+                spawnSmoothFireParticles(player, loc);
+            }
+
+            // Lewa krawędź (zachód) - x = minX
+            for (int z = region.minZ; z <= region.maxZ; z += edgeStep) {
+                Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
+                spawnSmoothFireParticles(player, loc);
+            }
+
+            // Prawa krawędź (wschód) - x = maxX
+            for (int z = region.minZ; z <= region.maxZ; z += edgeStep) {
+                Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
+                spawnSmoothFireParticles(player, loc);
+            }
+        }
     }
 }
