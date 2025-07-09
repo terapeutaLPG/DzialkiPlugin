@@ -26,15 +26,12 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
 import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
 import org.bukkit.Particle;
 import org.bukkit.World;
-import org.bukkit.boss.BarColor;
-import org.bukkit.boss.BarStyle;
 import org.bukkit.boss.BossBar;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
@@ -1362,19 +1359,16 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // === METODY PUBLICZNE DLA LISTENERÓW ===
     public void showBossBar(ProtectedRegion region, Player player) {
-        String nazwa = region.getId();                                 // nazwa działki
-        String wlasciciel = region.getOwners()
-                .stream().findFirst().orElse("Brak");     // pierwszy właściciel
-
+        String nazwa = region.plotName;
+        String wlasciciel = region.owner;
         BossBar bar = bossBary.computeIfAbsent(player.getUniqueId(), uuid -> {
-            BossBar b = Bukkit.createBossBar("", BarColor.GREEN, BarStyle.SOLID);
+            BossBar b = org.bukkit.Bukkit.createBossBar("", org.bukkit.boss.BarColor.GREEN, org.bukkit.boss.BarStyle.SOLID);
             b.setVisible(true);
             b.addPlayer(player);
             return b;
         });
-
-        bar.setTitle(ChatColor.YELLOW + "Działka: " + ChatColor.GREEN + nazwa
-                + ChatColor.YELLOW + " | Właściciel: " + ChatColor.GREEN + wlasciciel);
+        bar.setTitle(org.bukkit.ChatColor.YELLOW + "Działka: " + org.bukkit.ChatColor.GREEN + nazwa
+                + org.bukkit.ChatColor.YELLOW + " | Właściciel: " + org.bukkit.ChatColor.GREEN + wlasciciel);
         bar.setProgress(1.0);
     }
 
@@ -1405,6 +1399,31 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 stopBoundaryParticles(player);
             }
         }
+    }
+
+    @EventHandler
+    public void onPlayerJoin(org.bukkit.event.player.PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        // Sprawdź czy gracz jest bezpośrednio na działce
+        ProtectedRegion region = getRegion(player.getLocation());
+        if (region != null) {
+            // Gracz jest na działce - pokaż BossBar i granice
+            showBossBar(region, player);
+            scheduleBoundaryParticles(region, player);
+        } else {
+            // Sprawdź czy jest w pobliżu (15 bloków) - tylko granice
+            region = getNearbyRegion(player.getLocation(), 15);
+            if (region != null) {
+                scheduleBoundaryParticles(region, player);
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerQuit(org.bukkit.event.player.PlayerQuitEvent event) {
+        Player player = event.getPlayer();
+        hideBossBar(player);
+        stopBoundaryParticles(player);
     }
 
     private void openPlayersPanel(ProtectedRegion region, Player player) {
