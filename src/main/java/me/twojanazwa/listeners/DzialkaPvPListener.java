@@ -2,12 +2,12 @@ package me.twojanazwa.listeners;
 
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
-import org.bukkit.boss.BossBar;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 
 import me.twojanazwa.commands.DzialkaCommand;
@@ -61,9 +61,9 @@ public class DzialkaPvPListener implements Listener {
         ProtectedRegion currentRegion = dzialkaCommand.getRegion(to);
         ProtectedRegion previousRegion = dzialkaCommand.getRegion(from);
 
-        // Sprawdź czy gracz jest w pobliżu działki (promień 10 bloków)
-        ProtectedRegion nearbyRegion = dzialkaCommand.getNearbyRegion(to, 10);
-        ProtectedRegion previousNearbyRegion = dzialkaCommand.getNearbyRegion(from, 10);
+        // Sprawdź czy gracz jest w pobliżu działki (promień 15 bloków)
+        ProtectedRegion nearbyRegion = dzialkaCommand.getNearbyRegion(to, 15);
+        ProtectedRegion previousNearbyRegion = dzialkaCommand.getNearbyRegion(from, 15);
 
         // === OBSŁUGA WEJŚCIA/WYJŚCIA Z DZIAŁKI ===
         if (!regionsAreEqual(currentRegion, previousRegion)) {
@@ -80,8 +80,6 @@ public class DzialkaPvPListener implements Listener {
                 // OBSŁUGA CZASU - ustawia czas działki dla gracza
                 long t = currentRegion.isDay ? 1000L : 13000L;
                 player.setPlayerTime(t, false);
-
-                dzialkaCommand.showBossBar(currentRegion, player);
             } else {
                 // Gracz opuścił działkę
                 player.sendMessage("§cOpuszczasz działkę.");
@@ -90,11 +88,6 @@ public class DzialkaPvPListener implements Listener {
 
                 // OBSŁUGA CZASU - przywraca serwerowy czas graczowi
                 player.resetPlayerTime();
-
-                BossBar bossBar = dzialkaCommand.getBossBar(player);
-                if (bossBar != null) {
-                    bossBar.setVisible(false);
-                }
             }
         }
 
@@ -125,6 +118,19 @@ public class DzialkaPvPListener implements Listener {
                     new TextComponent("§7Opuściłeś działkę: §e" + previousRegion.plotName + " §7(granice widoczne)"));
             dzialkaCommand.scheduleBoundaryParticles(previousRegion, player);
         }
+
+        // === ZAWSZE AKTUALIZUJ BOSSBAR ===
+        // Zaktualizuj BossBar niezależnie od tego, czy gracz jest na działce czy w pobliżu
+        dzialkaCommand.updatePlayerBossBar(player);
+    }
+
+    @EventHandler
+    public void onPlayerJoin(PlayerJoinEvent event) {
+        Player player = event.getPlayer();
+        // Zaktualizuj BossBar po dołączeniu gracza
+        Bukkit.getScheduler().runTaskLater(dzialkaCommand.getPlugin(), () -> {
+            dzialkaCommand.updatePlayerBossBar(player);
+        }, 5L); // Opóźnienie 5 ticków, aby gracz był w pełni załadowany
     }
 
     // Pomocnicza metoda porównująca regiony

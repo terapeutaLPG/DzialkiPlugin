@@ -492,6 +492,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         return bossBary.get(player.getUniqueId());
     }
 
+    public JavaPlugin getPlugin() {
+        return plugin;
+    }
+
     public void savePlots() {
         // Upewnij się że folder istnieje
         if (!plugin.getDataFolder().exists()) {
@@ -765,6 +769,20 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             }
         }
         return null;
+    }
+
+    // === METODA DO SPRAWDZANIA CZY GRACZ JEST NA DZIAŁCE LUB W POBLIŻU ===
+    public ProtectedRegion getRegionOrNearby(Player player) {
+        Location loc = player.getLocation();
+
+        // Najpierw sprawdź czy gracz jest bezpośrednio na działce
+        ProtectedRegion directRegion = getRegion(loc);
+        if (directRegion != null) {
+            return directRegion;
+        }
+
+        // Jeśli nie, sprawdź czy jest w pobliżu (15 bloków)
+        return getNearbyRegion(loc, 15);
     }
 
     public boolean isInAnyPlot(Player player) {
@@ -1360,6 +1378,24 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         bar.setProgress(1.0);
     }
 
+    public void hideBossBar(Player player) {
+        BossBar bar = bossBary.get(player.getUniqueId());
+        if (bar != null) {
+            bar.setVisible(false);
+            bar.removeAll();
+            bossBary.remove(player.getUniqueId());
+        }
+    }
+
+    public void updatePlayerBossBar(Player player) {
+        ProtectedRegion region = getRegionOrNearby(player);
+        if (region != null) {
+            showBossBar(region, player);
+        } else {
+            hideBossBar(player);
+        }
+    }
+
     public void stopParticles(ProtectedRegion region) {
         // Zatrzymaj cząsteczki dla konkretnego regionu
         for (Player player : Bukkit.getOnlinePlayers()) {
@@ -1557,8 +1593,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     return;
                 }
 
-                // Sprawdź czy gracz nadal jest w tym samym regionie
-                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 20);
+                // Sprawdź czy gracz nadal jest w promieniu 15 bloków od działki
+                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 15);
                 if (nearby == null || !nearby.equals(region)) {
                     cancel();
                     playerBoundaryTasks.remove(player.getUniqueId());
