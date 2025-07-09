@@ -778,8 +778,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             return directRegion;
         }
 
-        // Jeśli nie, sprawdź czy jest w pobliżu (15 bloków)
-        return getNearbyRegion(loc, 15);
+        // Jeśli nie, sprawdź czy jest w pobliżu (10 bloków)
+        return getNearbyRegion(loc, 10);
     }
 
     public boolean isInAnyPlot(Player player) {
@@ -1394,7 +1394,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     public void stopParticles(ProtectedRegion region) {
         // Zatrzymaj cząsteczki dla konkretnego regionu
         for (Player player : Bukkit.getOnlinePlayers()) {
-            ProtectedRegion currentRegion = getNearbyRegion(player.getLocation(), 20);
+            ProtectedRegion currentRegion = getNearbyRegion(player.getLocation(), 10);
             if (currentRegion != null && currentRegion.equals(region)) {
                 stopBoundaryParticles(player);
             }
@@ -1411,8 +1411,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             showBossBar(region, player);
             scheduleBoundaryParticles(region, player);
         } else {
-            // Sprawdź czy jest w pobliżu (15 bloków) - tylko granice
-            region = getNearbyRegion(player.getLocation(), 15);
+            // Sprawdź czy jest w pobliżu (10 bloków) - tylko granice
+            region = getNearbyRegion(player.getLocation(), 10);
             if (region != null) {
                 scheduleBoundaryParticles(region, player);
             }
@@ -1613,8 +1613,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     return;
                 }
 
-                // Sprawdź czy gracz nadal jest w promieniu 15 bloków od działki
-                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 15);
+                // Sprawdź czy gracz nadal jest w promieniu 10 bloków od działki
+                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 10);
                 if (nearby == null || !nearby.equals(region)) {
                     cancel();
                     playerBoundaryTasks.remove(player.getUniqueId());

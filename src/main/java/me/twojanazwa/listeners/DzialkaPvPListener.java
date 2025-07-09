@@ -61,9 +61,9 @@ public class DzialkaPvPListener implements Listener {
         ProtectedRegion currentRegion = dzialkaCommand.getRegion(to);
         ProtectedRegion previousRegion = dzialkaCommand.getRegion(from);
 
-        // Sprawdź czy gracz jest w pobliżu działki (promień 15 bloków)
-        ProtectedRegion nearbyRegion = dzialkaCommand.getNearbyRegion(to, 15);
-        ProtectedRegion previousNearbyRegion = dzialkaCommand.getNearbyRegion(from, 15);
+        // Sprawdź czy gracz jest w pobliżu działki (promień 10 bloków)
+        ProtectedRegion nearbyRegion = dzialkaCommand.getNearbyRegion(to, 10);
+        ProtectedRegion previousNearbyRegion = dzialkaCommand.getNearbyRegion(from, 10);
 
         // === OBSŁUGA WEJŚCIA/WYJŚCIA Z DZIAŁKI ===
         if (!regionsAreEqual(currentRegion, previousRegion)) {
