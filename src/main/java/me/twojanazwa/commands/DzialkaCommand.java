@@ -1624,30 +1624,30 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     public void showBoundaryParticlesVertical(ProtectedRegion region, Player player, int edgeStep) {
         World world = player.getWorld();
-        int minY = world.getMinHeight();
-        int maxY = world.getMaxHeight();
+        int minY = Math.max(region.minY, world.getMinHeight());
+        int maxY = Math.min(region.maxY, world.getMaxHeight());
 
-        for (int y = minY; y <= maxY; y += edgeStep) {
+        for (int y = minY; y <= maxY; y += 10) {
             // Górna krawędź (północ) - z = minZ
-            for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+            for (int x = region.minX; x <= region.maxX; x++) {
                 Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
                 spawnSmoothFireParticles(player, loc);
             }
 
             // Dolna krawędź (południe) - z = maxZ
-            for (int x = region.minX; x <= region.maxX; x += edgeStep) {
+            for (int x = region.minX; x <= region.maxX; x++) {
                 Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
                 spawnSmoothFireParticles(player, loc);
             }
 
             // Lewa krawędź (zachód) - x = minX
-            for (int z = region.minZ; z <= region.maxZ; z += edgeStep) {
+            for (int z = region.minZ; z <= region.maxZ; z++) {
                 Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
                 spawnSmoothFireParticles(player, loc);
             }
 
             // Prawa krawędź (wschód) - x = maxX
-            for (int z = region.minZ; z <= region.maxZ; z += edgeStep) {
+            for (int z = region.minZ; z <= region.maxZ; z++) {
                 Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
                 spawnSmoothFireParticles(player, loc);
             }
