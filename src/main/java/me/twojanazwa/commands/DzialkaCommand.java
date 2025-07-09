@@ -26,6 +26,8 @@ import java.util.Set;
 import java.util.UUID;
 
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
+import org.bukkit.Color;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.OfflinePlayer;
@@ -1342,23 +1344,20 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // === METODY PUBLICZNE DLA LISTENERÓW ===
     public void showBossBar(ProtectedRegion region, Player player) {
-        // Remove existing BossBar for the player if present
-        BossBar existingBar = bossBary.get(player.getUniqueId());
-        if (existingBar != null) {
-            existingBar.setVisible(false);
-            existingBar.removeAll();
-        }
+        String nazwa = region.getId();                                 // nazwa działki
+        String wlasciciel = region.getOwners()
+                .stream().findFirst().orElse("Brak");     // pierwszy właściciel
 
-        // Create a new BossBar with the desired text and style
-        String barText = "§eDziałka: §a" + region.plotName + " §e| Właściciel: §b" + region.owner;
-        BossBar bossBar = Bukkit.createBossBar(barText, BarColor.PURPLE, BarStyle.SEGMENTED_10);
+        BossBar bar = bossBary.computeIfAbsent(player.getUniqueId(), uuid -> {
+            BossBar b = Bukkit.createBossBar("", BarColor.GREEN, BarStyle.SOLID);
+            b.setVisible(true);
+            b.addPlayer(player);
+            return b;
+        });
 
-        // Add the player to the BossBar
-        bossBar.addPlayer(player);
-        bossBar.setVisible(true);
-
-        // Store the BossBar for future reference
-        bossBary.put(player.getUniqueId(), bossBar);
+        bar.setTitle(ChatColor.YELLOW + "Działka: " + ChatColor.GREEN + nazwa
+                + ChatColor.YELLOW + " | Właściciel: " + ChatColor.GREEN + wlasciciel);
+        bar.setProgress(1.0);
     }
 
     public void stopParticles(ProtectedRegion region) {
@@ -1465,6 +1464,22 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     || this.maxZ < other.minZ || this.minZ > other.maxZ
                     || this.maxY < other.minY || this.minY > other.maxY);
         }
+
+        public String getId() {
+            return plotName; // Zwraca nazwę działki
+        }
+
+        public List<String> getOwners() {
+            return List.of(owner); // Zwraca listę właścicieli (na razie tylko jeden)
+        }
+
+        public Location getMinimumPoint() {
+            return new Location(center.getWorld(), minX, minY, minZ);
+        }
+
+        public Location getMaximumPoint() {
+            return new Location(center.getWorld(), maxX, maxY, maxZ);
+        }
     }
 
     // === KLASA PLAYERpermissions ===
@@ -1498,54 +1513,28 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // ========================= NOWY SYSTEM GRANIC =========================
     // Główna metoda do wyświetlania granic na określonej wysokości z płynną animacją
-    public void showBoundaryParticles(ProtectedRegion region, Player player, int y, int offset) {
+    public void showBoundaryParticles(ProtectedRegion region, Player player, int y) {
         World world = player.getWorld();
-        int edgeStep = 3; // Zwiększona odległość między cząsteczkami dla mniejszego lagu
+        int step = 1; // co 1 blok – równa linia
 
-        // Oblicz całkowitą liczbę punktów na obwodzie
-        int totalPoints = ((region.maxX - region.minX) / edgeStep) * 4;
+        // Góra i dół działki (oś X)
+        for (int x = region.getMinimumPoint().getBlockX();
+                x <= region.getMaximumPoint().getBlockX(); x += step) {
 
-        // Wyświetl tylko część cząsteczek na podstawie offsetu
-        int pointsPerFrame = Math.max(1, totalPoints / 20); // Rozłóż na 20 klatek
-        int startPoint = (offset * pointsPerFrame) % totalPoints;
-        int endPoint = Math.min(startPoint + pointsPerFrame, totalPoints);
-
-        int currentPoint = 0;
-
-        // Górna krawędź (północ) - z = minZ
-        for (int x = region.minX; x <= region.maxX && currentPoint < endPoint; x += edgeStep) {
-            if (currentPoint >= startPoint) {
-                Location loc = new Location(world, x + 0.5, y, region.minZ + 0.5);
-                spawnSmoothFireParticles(player, loc);
-            }
-            currentPoint++;
+            spawnFireCloud(player, new Location(world, x + 0.5, y,
+                    region.getMinimumPoint().getBlockZ() + 0.5)); // północ
+            spawnFireCloud(player, new Location(world, x + 0.5, y,
+                    region.getMaximumPoint().getBlockZ() + 0.5)); // południe
         }
 
-        // Dolna krawędź (południe) - z = maxZ  
-        for (int x = region.minX; x <= region.maxX && currentPoint < endPoint; x += edgeStep) {
-            if (currentPoint >= startPoint) {
-                Location loc = new Location(world, x + 0.5, y, region.maxZ + 0.5);
-                spawnSmoothFireParticles(player, loc);
-            }
-            currentPoint++;
-        }
+        // Lewa i prawa krawędź (oś Z)
+        for (int z = region.getMinimumPoint().getBlockZ();
+                z <= region.getMaximumPoint().getBlockZ(); z += step) {
 
-        // Lewa krawędź (zachód) - x = minX
-        for (int z = region.minZ + edgeStep; z < region.maxZ && currentPoint < endPoint; z += edgeStep) {
-            if (currentPoint >= startPoint) {
-                Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
-                spawnSmoothFireParticles(player, loc);
-            }
-            currentPoint++;
-        }
-
-        // Prawa krawędź (wschód) - x = maxX
-        for (int z = region.minZ + edgeStep; z < region.maxZ && currentPoint < endPoint; z += edgeStep) {
-            if (currentPoint >= startPoint) {
-                Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
-                spawnSmoothFireParticles(player, loc);
-            }
-            currentPoint++;
+            spawnFireCloud(player, new Location(world,
+                    region.getMinimumPoint().getBlockX() + 0.5, y, z + 0.5)); // zachód
+            spawnFireCloud(player, new Location(world,
+                    region.getMaximumPoint().getBlockX() + 0.5, y, z + 0.5)); // wschód
         }
     }
 
@@ -1586,7 +1575,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 int currentY = minY + (currentYIndex * yStep);
 
                 if (currentY <= maxY) {
-                    showBoundaryParticles(region, player, currentY, offset);
+                    showBoundaryParticles(region, player, currentY);
                 }
             }
         };
@@ -1611,9 +1600,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
     }
 
-    // Stara metoda - pozostawiam dla kompatybilności
-    private void spawnFireParticles(Player player, Location loc) {
-        spawnSmoothFireParticles(player, loc);
+    private void spawnFireCloud(Player player, Location loc) {
+        player.spawnParticle(Particle.FLAME, loc, 2, 0.15, 0.10, 0.15, 0.01);
+        player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 1, 0.10, 0.05, 0.10, 0.01);
+        player.spawnParticle(
+                Particle.REDSTONE, loc, 1, 0.10, 0.05, 0.10,
+                new Particle.DustOptions(Color.RED, 1.2f)
+        );
     }
 
     // === BRAKUJĄCE METODY - IMPLEMENTACJE ZASTĘPCZE ===
