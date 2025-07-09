@@ -1388,7 +1388,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     public void updatePlayerBossBar(Player player) {
-        ProtectedRegion region = getRegionOrNearby(player);
+        // BossBar powinien być pokazywany TYLKO gdy gracz jest bezpośrednio na działce
+        ProtectedRegion region = getRegion(player.getLocation());
         if (region != null) {
             showBossBar(region, player);
         } else {
