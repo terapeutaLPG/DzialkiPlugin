@@ -312,6 +312,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         return true;
                     }
                     String nazwa = args[1], nick = args[2];
+
+                    // Sprawdź czy gracz nie próbuje zaprosić samego siebie
+                    if (gracz.getName().equalsIgnoreCase(nick)) {
+                        gracz.sendMessage("§cNie możesz zaprosić samego siebie na swoją działkę!");
+                        return true;
+                    }
+
                     List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     ProtectedRegion r = playerPlots.stream()
                             .filter(p -> samePlotName(p.plotName, nazwa))
@@ -325,6 +332,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         gracz.sendMessage("§cGracz '" + nick + "' nie jest online.");
                         return true;
                     }
+
+                    // Sprawdź czy gracz już jest zaproszony
+                    if (r.invitedPlayers.contains(invited.getUniqueId())) {
+                        gracz.sendMessage("§cGracz '" + nick + "' już jest członkiem tej działki!");
+                        return true;
+                    }
+
                     r.invitedPlayers.add(invited.getUniqueId());
                     savePlots();
                     invited.sendMessage("§aZostałeś zaproszony na działkę '" + nazwa + "'.");
@@ -348,6 +362,89 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     r.invitedPlayers.remove(gracz.getUniqueId());
                     savePlots();
                     gracz.sendMessage("§aOpuściłeś działkę '" + nazwa + "'.");
+                    return true;
+                }
+                case "dolacz" -> {
+                    if (args.length < 2) {
+                        gracz.sendMessage("§cUżycie: /dzialka dolacz <nazwa>");
+                        return true;
+                    }
+                    String nazwa = args[1];
+
+                    // Znajdź działkę o podanej nazwie
+                    ProtectedRegion targetRegion = null;
+                    Player owner = null;
+
+                    for (Map.Entry<UUID, List<ProtectedRegion>> entry : dzialki.entrySet()) {
+                        for (ProtectedRegion r : entry.getValue()) {
+                            if (samePlotName(r.plotName, nazwa)) {
+                                targetRegion = r;
+                                owner = Bukkit.getPlayer(entry.getKey());
+                                if (owner == null) {
+                                    // Właściciel offline, pobierz offline player
+                                    OfflinePlayer offlineOwner = Bukkit.getOfflinePlayer(entry.getKey());
+                                    if (offlineOwner.hasPlayedBefore()) {
+                                        // Sprawdź czy gracz już jest członkiem
+                                        if (r.owner.equals(gracz.getName())) {
+                                            gracz.sendMessage("§cTo jest Twoja własna działka!");
+                                            return true;
+                                        }
+                                        if (r.invitedPlayers.contains(gracz.getUniqueId())) {
+                                            gracz.sendMessage("§cJuż jesteś członkiem działki '" + nazwa + "'!");
+                                            return true;
+                                        }
+
+                                        // Dodaj gracza do listy zaproszonych
+                                        r.invitedPlayers.add(gracz.getUniqueId());
+                                        savePlots();
+                                        gracz.sendMessage("§aDołączyłeś do działki '" + nazwa + "'!");
+
+                                        // Powiadom właściciela jeśli jest online
+                                        Player onlineOwner = Bukkit.getPlayer(r.owner);
+                                        if (onlineOwner != null && onlineOwner.isOnline()) {
+                                            onlineOwner.sendMessage("§aGracz '" + gracz.getName() + "' dołączył do Twojej działki '" + nazwa + "'!");
+                                        }
+                                        return true;
+                                    }
+                                }
+                                break;
+                            }
+                        }
+                        if (targetRegion != null) {
+                            break;
+                        }
+                    }
+
+                    if (targetRegion == null) {
+                        gracz.sendMessage("§cNie znaleziono działki o nazwie '" + nazwa + "'!");
+                        return true;
+                    }
+
+                    // Sprawdź czy gracz już jest członkiem
+                    if (targetRegion.owner.equals(gracz.getName())) {
+                        gracz.sendMessage("§cTo jest Twoja własna działka!");
+                        return true;
+                    }
+                    if (targetRegion.invitedPlayers.contains(gracz.getUniqueId())) {
+                        gracz.sendMessage("§cJuż jesteś członkiem działki '" + nazwa + "'!");
+                        return true;
+                    }
+
+                    // Dodaj gracza do listy zaproszonych
+                    targetRegion.invitedPlayers.add(gracz.getUniqueId());
+                    savePlots();
+                    gracz.sendMessage("§aDołączyłeś do działki '" + nazwa + "'!");
+
+                    // Powiadom właściciela jeśli jest online
+                    if (owner != null && owner.isOnline()) {
+                        owner.sendMessage("§aGracz '" + gracz.getName() + "' dołączył do Twojej działki '" + nazwa + "'!");
+                    } else {
+                        // Właściciel offline, spróbuj znaleźć go po nazwie
+                        Player onlineOwner = Bukkit.getPlayer(targetRegion.owner);
+                        if (onlineOwner != null && onlineOwner.isOnline()) {
+                            onlineOwner.sendMessage("§aGracz '" + gracz.getName() + "' dołączył do Twojej działki '" + nazwa + "'!");
+                        }
+                    }
                     return true;
                 }
                 case "zastepca" -> {
@@ -433,8 +530,26 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     return true;
                 }
                 default -> {
-                    gracz.sendMessage("§eNieznana komenda. Użyj /dzialka help");
-                    return true;
+                    // Komenda help lub nieznana komenda
+                    if (sub.equals("help") || sub.equals("pomoc")) {
+                        gracz.sendMessage("§e=== § Komendy Działek §e===");
+                        gracz.sendMessage("§7/dzialka stworz <nazwa> - §aUtwórz nową działkę");
+                        gracz.sendMessage("§7/dzialka usun <nazwa> - §cUsuń działkę");
+                        gracz.sendMessage("§7/dzialka tp <nazwa> - §eTeleportuj się na działkę");
+                        gracz.sendMessage("§7/dzialka lista - §bPokaż swoje działki");
+                        gracz.sendMessage("§7/dzialka panel <nazwa> - §dOtwórz panel działki");
+                        gracz.sendMessage("§7/dzialka warp <nazwa> - §aTeleportuj na warp");
+                        gracz.sendMessage("§7/dzialka stworzwarp <nazwa> - §aUstaw warp");
+                        gracz.sendMessage("§7/dzialka zapros <nazwa> <nick> - §aZaproś gracza");
+                        gracz.sendMessage("§7/dzialka dolacz <nazwa> - §aDołącz do działki");
+                        gracz.sendMessage("§7/dzialka opusc <nazwa> - §cOpuść działkę");
+                        gracz.sendMessage("§7/dzialka zastepca <nazwa> <nick> - §eUstaw zastępcę");
+                        gracz.sendMessage("§7/dzialka top - §6Zobacz ranking działek");
+                        return true;
+                    } else {
+                        gracz.sendMessage("§eNieznana komenda. Użyj /dzialka help");
+                        return true;
+                    }
                 }
             }
         } catch (Exception e) {
@@ -457,7 +572,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         if (args.length == 1) {
             completions.addAll(List.of(
                     "stworz", "usun", "tp", "lista", "panel", "warp", "stworzwarp", "top",
-                    "zapros", "opusc", "zastepca", "admintp", "adminusun", "test", "debug"
+                    "zapros", "opusc", "zastepca", "dolacz", "admintp", "adminusun", "test", "debug", "help", "pomoc"
             ));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase()) {
@@ -471,13 +586,30 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     }
                 }
                 case "zapros", "zastepca" -> {
-                    for (Player p : Bukkit.getOnlinePlayers()) {
-                        completions.add(p.getName());
+                    // Dla zapros i zastepca - pierwszym argumentem jest nazwa działki gracza
+                    List<ProtectedRegion> playerPlots = dzialki
+                            .getOrDefault(gracz.getUniqueId(), Collections.emptyList());
+                    for (ProtectedRegion r : playerPlots) {
+                        if (r.plotName != null) {
+                            completions.add(r.plotName);
+                        }
+                    }
+                }
+                case "dolacz" -> {
+                    // Dla dolacz - pokaż wszystkie działki w których gracz NIE jest członkiem
+                    for (List<ProtectedRegion> plotList : dzialki.values()) {
+                        for (ProtectedRegion r : plotList) {
+                            if (r.plotName != null && !r.owner.equals(gracz.getName())
+                                    && !r.invitedPlayers.contains(gracz.getUniqueId())) {
+                                completions.add(r.plotName);
+                            }
+                        }
                     }
                 }
             }
         } else if (args.length == 3 && (args[0].equalsIgnoreCase("zapros")
                 || args[0].equalsIgnoreCase("zastepca"))) {
+            // Trzecim argumentem dla zapros/zastepca jest nick gracza
             for (Player p : Bukkit.getOnlinePlayers()) {
                 completions.add(p.getName());
             }
@@ -552,6 +684,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     config.set(regionKey + ".allowSpawnerBreak", r.allowSpawnerBreak);
                     config.set(regionKey + ".allowBeaconPlace", r.allowBeaconPlace);
                     config.set(regionKey + ".allowBeaconBreak", r.allowBeaconBreak);
+                    config.set(regionKey + ".mobGriefing", r.mobGriefing);
 
                     // Zapisz dane rynku
                     config.set(regionKey + ".isOnMarket", r.isOnMarket);
@@ -671,6 +804,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         region.allowSpawnerBreak = config.getBoolean(fullKey + ".allowSpawnerBreak", false);
                         region.allowBeaconPlace = config.getBoolean(fullKey + ".allowBeaconPlace", false);
                         region.allowBeaconBreak = config.getBoolean(fullKey + ".allowBeaconBreak", false);
+                        region.mobGriefing = config.getBoolean(fullKey + ".mobGriefing", false);
 
                         // Ładuj indywidualne uprawnienia graczy
                         if (config.contains(fullKey + ".playerPermissions")) {
@@ -1000,6 +1134,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         inv.setItem(20, toggleItem(r.allowSpawnMobs, "§f§lRespienie mobów",
                 "Pozwala nieznajomym graczom przyzywać moby", Material.ZOMBIE_SPAWN_EGG));
 
+        inv.setItem(21, toggleItem(r.mobGriefing, "§f§lNiszczenie przez moby",
+                "Pozwala mobom niszczyć bloki na działce", Material.CREEPER_HEAD));
+
         // === USTAWIENIA SPECJALNE ===
         inv.setItem(22, toggleItem(r.isDay, "§f§lCzas na działce",
                 "Ustawia dzień lub noc na działce", Material.CLOCK));
@@ -1276,6 +1413,12 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     ? "§aRespienie mobów włączone!"
                     : "§cRespienie mobów wyłączone!";
             changed = true;
+        } else if (displayName.contains("§f§lNiszczenie przez moby") || displayName.contains("§a§f§lNiszczenie przez moby") || displayName.contains("§c§f§lNiszczenie przez moby")) {
+            region.mobGriefing = !region.mobGriefing;
+            message = region.mobGriefing
+                    ? "§aMoby mogą niszczyć bloki!"
+                    : "§cMoby nie mogą niszczyć bloków!";
+            changed = true;
         } else if (displayName.contains("§f§lCzas na działce") || displayName.contains("§a§f§lCzas na działce") || displayName.contains("§c§f§lCzas na działce")) {
             region.isDay = !region.isDay;
             updateTimeForPlayersInRegion(region, player);
@@ -1489,6 +1632,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         public boolean allowSpawnerBreak = false;
         public boolean allowBeaconPlace = false;
         public boolean allowBeaconBreak = false;
+        public boolean mobGriefing = false;  // Nowe pole - czy moby mogą niszczyć bloki
 
         // Rynek działek
         public boolean isOnMarket = false;

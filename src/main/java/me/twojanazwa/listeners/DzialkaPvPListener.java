@@ -5,8 +5,10 @@ import org.bukkit.Location;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.entity.EntityChangeBlockEvent;
 import org.bukkit.event.entity.EntityDamageByEntityEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
 
@@ -145,5 +147,27 @@ public class DzialkaPvPListener implements Listener {
         return r1.plotName != null && r2.plotName != null && r1.plotName.equalsIgnoreCase(r2.plotName);
         // lub jeśli chcesz użyć static z DzialkaCommand:
         // return me.twojanazwa.commands.DzialkaCommand.samePlotName(r1.plotName, r2.plotName);
+    }
+
+    @EventHandler
+    public void onEntityExplode(EntityExplodeEvent event) {
+        Location explodeLocation = event.getLocation();
+        ProtectedRegion region = dzialkaCommand.getRegion(explodeLocation);
+
+        if (region != null && !region.mobGriefing) {
+            // Zabloń eksplozję jeśli mobGriefing jest wyłączone
+            event.setCancelled(true);
+        }
+    }
+
+    @EventHandler
+    public void onEntityChangeBlock(EntityChangeBlockEvent event) {
+        Location blockLocation = event.getBlock().getLocation();
+        ProtectedRegion region = dzialkaCommand.getRegion(blockLocation);
+
+        if (region != null && !region.mobGriefing) {
+            // Zabloń zmienianie bloków przez moby jeśli mobGriefing jest wyłączone
+            event.setCancelled(true);
+        }
     }
 }
