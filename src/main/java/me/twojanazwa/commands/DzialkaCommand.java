@@ -460,6 +460,51 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     }
                     return true;
                 }
+                case "oplac" -> {
+                    if (args.length < 2) {
+                        gracz.sendMessage("§cUżycie: /dzialka oplac <nazwa>");
+                        return true;
+                    }
+                    String nazwa = args[1];
+                    List<ProtectedRegion> playerPlots = dzialki.getOrDefault(gracz.getUniqueId(), Collections.emptyList());
+                    ProtectedRegion r = playerPlots.stream()
+                            .filter(p -> samePlotName(p.plotName, nazwa))
+                            .findFirst().orElse(null);
+                    if (r == null) {
+                        gracz.sendMessage("§cNie masz działki o nazwie '" + nazwa + "'.");
+                        return true;
+                    }
+
+                    // Sprawdź czy działka wymaga opłaty
+                    long currentTime = System.currentTimeMillis();
+                    long daysLeft = (r.paidUntil - currentTime) / (24L * 60L * 60L * 1000L);
+
+                    if (daysLeft > 14) {
+                        gracz.sendMessage("§cDziałka jest opłacona na maksymalnie 14 dni. Pozostało: " + daysLeft + " dni.");
+                        return true;
+                    }
+
+                    // Sprawdź czy gracz ma 20 żelaznych sztabek
+                    if (!gracz.getInventory().containsAtLeast(new ItemStack(Material.IRON_INGOT), 20)) {
+                        gracz.sendMessage("§cPotrzebujesz 20 żelaznych sztabek aby opłacić działkę!");
+                        gracz.sendMessage("§7Koszt: §e20x Żelazna Sztabka = 3 dni");
+                        return true;
+                    }
+
+                    // Zabierz żelazne sztabki
+                    gracz.getInventory().removeItem(new ItemStack(Material.IRON_INGOT, 20));
+
+                    // Dodaj 3 dni do opłaty
+                    r.paidUntil += (3L * 24L * 60L * 60L * 1000L);
+                    r.lastPaymentTime = currentTime;
+                    savePlots();
+
+                    long newDaysLeft = (r.paidUntil - currentTime) / (24L * 60L * 60L * 1000L);
+                    gracz.sendMessage("§aOpłaciłeś działkę '" + nazwa + "' na kolejne 3 dni!");
+                    gracz.sendMessage("§7Działka jest teraz opłacona na §e" + newDaysLeft + " dni§7.");
+
+                    return true;
+                }
                 case "zastepca" -> {
                     if (!gracz.hasPermission("dzialkiplugin.zastepca")) {
                         gracz.sendMessage("§cNie masz uprawnień do ustawiania zastępcy!");
@@ -585,7 +630,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         if (args.length == 1) {
             completions.addAll(List.of(
                     "stworz", "usun", "tp", "lista", "panel", "warp", "stworzwarp", "top",
-                    "zapros", "opusc", "zastepca", "dolacz", "admintp", "adminusun", "test", "debug", "help", "pomoc"
+                    "zapros", "opusc", "zastepca", "dolacz", "oplac", "admintp", "adminusun", "test", "debug", "help", "pomoc"
             ));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase()) {
@@ -1871,6 +1916,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         // Rynek działek
         public boolean isOnMarket = false;
         public double marketPrice = 0.0;
+
+        // System opłat za działkę
+        public long lastPaymentTime = System.currentTimeMillis(); // Czas ostatniej opłaty
+        public long paidUntil = System.currentTimeMillis() + (3L * 24L * 60L * 60L * 1000L); // Opłacone do (3 dni od utworzenia)
 
         // Indywidualne uprawnienia dla poszczególnych graczy
         public Map<UUID, PlayerPermissions> playerPermissions = new HashMap<>();
