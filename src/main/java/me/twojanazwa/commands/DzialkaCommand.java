@@ -41,7 +41,10 @@ import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
+import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -61,6 +64,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     public DzialkaCommand(JavaPlugin plugin) {
         this.plugin = plugin;
+        // Uruchom task aktywności punktów
+        startActivityPointsTask();
     }
 
     /**
@@ -301,6 +306,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
                     // ustawiamy warp tylko jeśli gracz wewnątrz działki
                     r.warp = loc;
+
+                    // Dodaj punkty za ustawienie warpu
+                    addWarpPoints(r, gracz.getName());
+
                     savePlots();
                     gracz.sendMessage("§aWarp ustawiony dla działki '" + nazwa + "'.");
                     return true;
@@ -340,6 +349,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     }
 
                     r.invitedPlayers.add(invited.getUniqueId());
+
+                    // Dodaj punkty za zaproszenie gracza
+                    addInvitePoints(r, gracz.getName(), nick);
+
                     savePlots();
                     invited.sendMessage("§aZostałeś zaproszony na działkę '" + nazwa + "'.");
                     gracz.sendMessage("§aZaproszono '" + nick + "' na działkę '" + nazwa + "'.");
@@ -1252,6 +1265,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             return;
         }
 
+        // === OBSŁUGA PANELU RANKINGU ===
+        if (title.startsWith("§6§lRanking Działek - Strona ")) {
+            event.setCancelled(true);
+            handleRankingPanelClick(event, p, title);
+            return;
+        }
+
         // Obsługa panelu graczy
         if (title.startsWith("Gracze: ")) {
             event.setCancelled(true);
@@ -1462,6 +1482,87 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
     }
 
+    // === OBSŁUGA PANELU RANKINGU ===
+    private void handleRankingPanelClick(InventoryClickEvent event, Player player, String title) {
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null || !clickedItem.hasItemMeta()) {
+            return;
+        }
+
+        String displayName = clickedItem.getItemMeta().getDisplayName();
+
+        // Pobierz aktualną stronę z tytułu
+        String[] titleParts = title.split(" - Strona ");
+        if (titleParts.length < 2) {
+            return;
+        }
+
+        String[] pageParts = titleParts[1].split("/");
+        if (pageParts.length < 2) {
+            return;
+        }
+
+        int currentPage;
+        int totalPages;
+        try {
+            currentPage = Integer.parseInt(pageParts[0]);
+            totalPages = Integer.parseInt(pageParts[1]);
+        } catch (NumberFormatException e) {
+            return;
+        }
+
+        // Obsługa przycisków nawigacji
+        if (displayName.equals("§c« Poprzednia strona") && currentPage > 1) {
+            openTopPanel(player, currentPage - 1);
+        } else if (displayName.equals("§aNastępna strona »") && currentPage < totalPages) {
+            openTopPanel(player, currentPage + 1);
+        } else if (displayName.equals("§e🔄 Odśwież ranking")) {
+            openTopPanel(player, currentPage);
+        } else if (displayName.equals("§b§lInformacje o rankingu")) {
+            // Informacje - nic nie robimy, tylko pokazujemy lore
+            return;
+        } else {
+            // Kliknięcie na działkę - teleportuj gracza
+            List<String> lore = clickedItem.getItemMeta().getLore();
+            if (lore != null && !lore.isEmpty()) {
+                // Pobierz nazwę działki z displayName
+                String plotName = null;
+                if (displayName.contains(". ")) {
+                    String[] parts = displayName.split(". ", 2);
+                    if (parts.length == 2) {
+                        plotName = parts[1].replaceAll("§[0-9a-f]", ""); // Usuń kody kolorów
+                    }
+                }
+
+                if (plotName != null) {
+                    ProtectedRegion targetPlot = getRegionByName(plotName);
+                    if (targetPlot != null) {
+                        // Sprawdź czy gracz ma prawo wejścia na działkę
+                        if (!targetPlot.allowEnter && !targetPlot.owner.equals(player.getName())
+                                && !targetPlot.invitedPlayers.contains(player.getUniqueId())) {
+                            player.sendMessage("§cNie masz uprawnień do wejścia na tę działkę!");
+                            return;
+                        }
+
+                        // Teleportuj gracza na środek działki
+                        Location teleportLoc = targetPlot.center.clone().add(0.5, 1, 0.5);
+                        player.teleport(teleportLoc);
+                        player.sendMessage("§aTeleportowano na działkę §e" + targetPlot.plotName + " §a(właściciel: §b" + targetPlot.owner + "§a)");
+                        player.closeInventory();
+
+                        // Dodaj punkt za teleportację z rankingu (bonus dla właściciela)
+                        if (targetPlot.owner.equals(player.getName())) {
+                            targetPlot.points += 1;
+                            savePlots();
+                        }
+                    } else {
+                        player.sendMessage("§cNie można znaleźć tej działki!");
+                    }
+                }
+            }
+        }
+    }
+
     // === OBSŁUGA PANELU CZŁONKÓW ===
     private void handlePlayersPanel(InventoryClickEvent event, Player player, String title) {
         ItemStack clickedItem = event.getCurrentItem();
@@ -1603,6 +1704,139 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 }
             }
         }
+    }
+
+    // === SYSTEM PUNKTOWANIA ===
+    @EventHandler
+    public void onBlockPlace(BlockPlaceEvent event) {
+        Player player = event.getPlayer();
+        Location loc = event.getBlock().getLocation();
+        ProtectedRegion region = getRegion(loc);
+
+        if (region != null) {
+            // Właściciel stawia blok na swojej działce
+            if (region.owner.equals(player.getName())) {
+                region.points += 2;
+                savePlots();
+
+                // Co 10 punktów powiadamiaj właściciela
+                if (region.points % 10 == 0) {
+                    player.sendMessage("§a✨ Działka §e" + region.plotName + " §ama teraz §b" + region.points + " §apunktów!");
+                }
+            } // Zaproszony gracz stawia blok
+            else if (region.invitedPlayers.contains(player.getUniqueId())) {
+                region.points += 1;
+                savePlots();
+
+                // Powiadom właściciela jeśli jest online
+                Player owner = Bukkit.getPlayer(region.owner);
+                if (owner != null && owner.isOnline()) {
+                    owner.sendMessage("§a" + player.getName() + " §epostawił blok na Twojej działce! §7(+1 punkt)");
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onBlockBreak(BlockBreakEvent event) {
+        Player player = event.getPlayer();
+        Location loc = event.getBlock().getLocation();
+        ProtectedRegion region = getRegion(loc);
+
+        if (region != null) {
+            // Właściciel niszczy blok - odejmij mniejszą liczbę punktów
+            if (region.owner.equals(player.getName())) {
+                if (region.points > 0) {
+                    region.points = Math.max(0, region.points - 1);
+                    savePlots();
+                }
+            }
+        }
+    }
+
+    @EventHandler
+    public void onPlayerInteract(PlayerInteractEvent event) {
+        if (event.getAction() != org.bukkit.event.block.Action.RIGHT_CLICK_BLOCK) {
+            return;
+        }
+        if (event.getClickedBlock() == null) {
+            return;
+        }
+
+        Player player = event.getPlayer();
+        Location loc = event.getClickedBlock().getLocation();
+        ProtectedRegion region = getRegion(loc);
+
+        if (region != null && !region.owner.equals(player.getName())
+                && region.invitedPlayers.contains(player.getUniqueId())) {
+
+            // Losowe bonusowe punkty za interakcję gościa (20% szans)
+            if (Math.random() < 0.2) {
+                region.points += 1;
+                savePlots();
+
+                Player owner = Bukkit.getPlayer(region.owner);
+                if (owner != null && owner.isOnline()) {
+                    owner.sendMessage("§e" + player.getName() + " §aaktywnie korzysta z Twojej działki! §7(+1 punkt)");
+                }
+            }
+        }
+    }
+
+    // Metoda dodawania punktów za zaproszenie gracza (wywoływana w komendzie zapros)
+    public void addInvitePoints(ProtectedRegion region, String inviterName, String invitedName) {
+        region.points += 5;
+        savePlots();
+
+        Player inviter = Bukkit.getPlayer(inviterName);
+        if (inviter != null && inviter.isOnline()) {
+            inviter.sendMessage("§a✨ Otrzymałeś 5 punktów za zaproszenie gracza §e" + invitedName + "§a!");
+        }
+    }
+
+    // Metoda dodawania punktów za ustawienie warpu
+    public void addWarpPoints(ProtectedRegion region, String playerName) {
+        region.points += 10;
+        savePlots();
+
+        Player player = Bukkit.getPlayer(playerName);
+        if (player != null && player.isOnline()) {
+            player.sendMessage("§a✨ Otrzymałeś 10 punktów za ustawienie warpu na działce §e" + region.plotName + "§a!");
+        }
+    }
+
+    // Metoda okresowego dodawania punktów za aktywność
+    public void addActivityPoints() {
+        for (List<ProtectedRegion> plotList : dzialki.values()) {
+            for (ProtectedRegion region : plotList) {
+                // Sprawdź czy właściciel był aktywny w ostatnich 24h
+                Player owner = Bukkit.getPlayer(region.owner);
+                if (owner != null && owner.isOnline()) {
+                    // Sprawdź czy są aktywni członkowie
+                    int activeMembers = 0;
+                    for (UUID memberId : region.invitedPlayers) {
+                        Player member = Bukkit.getPlayer(memberId);
+                        if (member != null && member.isOnline()) {
+                            activeMembers++;
+                        }
+                    }
+
+                    // Dodaj punkty za aktywnych członków
+                    if (activeMembers > 0) {
+                        region.points += activeMembers * 3;
+                        owner.sendMessage("§a✨ Twoja działka §e" + region.plotName + " §aorzymała §b"
+                                + (activeMembers * 3) + " §apunktów za aktywnych członków!");
+                    }
+                }
+            }
+        }
+        savePlots();
+    }
+
+    // Automatyczne uruchomienie systemu punktów aktywności
+    public void startActivityPointsTask() {
+        // Uruchom task co godzinę (72000 ticków)
+        Bukkit.getScheduler().runTaskTimer(plugin, this::addActivityPoints, 72000L, 72000L);
     }
 
     // === KLASA PROTECTEDREGION ===
@@ -1811,8 +2045,129 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     // === BRAKUJĄCE METODY - IMPLEMENTACJE ZASTĘPCZE ===
     private void openTopPanel(Player player, int page) {
-        // Zastępcza implementacja - można rozbudować w przyszłości
-        player.sendMessage("§eRanking działek - funkcja w rozwoju!");
+        // Zbierz wszystkie działki i posortuj według punktów
+        List<ProtectedRegion> allPlots = new ArrayList<>();
+        for (List<ProtectedRegion> plotList : dzialki.values()) {
+            allPlots.addAll(plotList);
+        }
+
+        // Sortuj malejąco według punktów
+        allPlots.sort((r1, r2) -> Integer.compare(r2.points, r1.points));
+
+        // Oblicz paginację
+        int plotsPerPage = 21; // 3 rzędy po 7 slotów
+        int totalPages = Math.max(1, (int) Math.ceil((double) allPlots.size() / plotsPerPage));
+        page = Math.max(1, Math.min(page, totalPages));
+
+        int startIndex = (page - 1) * plotsPerPage;
+        int endIndex = Math.min(startIndex + plotsPerPage, allPlots.size());
+
+        Inventory inv = Bukkit.createInventory(null, 54, "§6§lRanking Działek - Strona " + page + "/" + totalPages);
+
+        // Wypełnij ranking
+        for (int i = startIndex; i < endIndex; i++) {
+            ProtectedRegion plot = allPlots.get(i);
+            int position = i + 1;
+
+            Material material;
+            String prefix;
+
+            // Ustaw materiał i prefix w zależności od pozycji
+            if (position == 1) {
+                material = Material.GOLD_INGOT;
+                prefix = "§6§l🥇 1. ";
+            } else if (position == 2) {
+                material = Material.IRON_INGOT;
+                prefix = "§7§l🥈 2. ";
+            } else if (position == 3) {
+                material = Material.COPPER_INGOT;
+                prefix = "§c§l🥉 3. ";
+            } else if (position <= 10) {
+                material = Material.EMERALD;
+                prefix = "§a§l" + position + ". ";
+            } else {
+                material = Material.DIAMOND;
+                prefix = "§b§l" + position + ". ";
+            }
+
+            ItemStack item = new ItemStack(material);
+            ItemMeta meta = item.getItemMeta();
+            if (meta != null) {
+                meta.setDisplayName(prefix + "§e" + plot.plotName);
+                List<String> lore = new ArrayList<>();
+                lore.add("§7Właściciel: §a" + plot.owner);
+                lore.add("§7Punkty: §e" + plot.points);
+                lore.add("§7Członkowie: §b" + plot.invitedPlayers.size());
+                lore.add("§7Rozmiar: §d" + (plot.maxX - plot.minX + 1) + "x" + (plot.maxZ - plot.minZ + 1));
+
+                SimpleDateFormat sdf = new SimpleDateFormat("dd/MM/yyyy");
+                lore.add("§7Utworzono: §8" + sdf.format(new Date(plot.creationTime)));
+                lore.add("");
+                lore.add("§8Kliknij aby teleportować się na działkę");
+                meta.setLore(lore);
+                item.setItemMeta(meta);
+            }
+
+            int slot = (i - startIndex) + 9; // Zaczynamy od slotu 9 (drugi rząd)
+            if (slot < 45) { // Upewnij się że nie przekraczamy granic inventory
+                inv.setItem(slot, item);
+            }
+        }
+
+        // Dodaj przyciski nawigacji
+        if (page > 1) {
+            ItemStack prevButton = new ItemStack(Material.ARROW);
+            ItemMeta prevMeta = prevButton.getItemMeta();
+            if (prevMeta != null) {
+                prevMeta.setDisplayName("§c« Poprzednia strona");
+                prevMeta.setLore(List.of("§7Strona " + (page - 1) + "/" + totalPages));
+                prevButton.setItemMeta(prevMeta);
+            }
+            inv.setItem(48, prevButton);
+        }
+
+        if (page < totalPages) {
+            ItemStack nextButton = new ItemStack(Material.ARROW);
+            ItemMeta nextMeta = nextButton.getItemMeta();
+            if (nextMeta != null) {
+                nextMeta.setDisplayName("§aNastępna strona »");
+                nextMeta.setLore(List.of("§7Strona " + (page + 1) + "/" + totalPages));
+                nextButton.setItemMeta(nextMeta);
+            }
+            inv.setItem(50, nextButton);
+        }
+
+        // Przycisk odświeżenia
+        ItemStack refreshButton = new ItemStack(Material.COMPASS);
+        ItemMeta refreshMeta = refreshButton.getItemMeta();
+        if (refreshMeta != null) {
+            refreshMeta.setDisplayName("§e🔄 Odśwież ranking");
+            refreshMeta.setLore(List.of("§7Kliknij aby odświeżyć listę", "§7Łącznie działek: §a" + allPlots.size()));
+            refreshButton.setItemMeta(refreshMeta);
+        }
+        inv.setItem(49, refreshButton);
+
+        // Przycisk informacji
+        ItemStack infoButton = new ItemStack(Material.BOOK);
+        ItemMeta infoMeta = infoButton.getItemMeta();
+        if (infoMeta != null) {
+            infoMeta.setDisplayName("§b§lInformacje o rankingu");
+            List<String> infoLore = new ArrayList<>();
+            infoLore.add("§7Ranking działek jest automatycznie");
+            infoLore.add("§7aktualizowany na podstawie punktów.");
+            infoLore.add("");
+            infoLore.add("§ePunkty otrzymujesz za:");
+            infoLore.add("§8• +2 - postawienie bloku przez właściciela");
+            infoLore.add("§8• +1 - interakcję gościa na działce");
+            infoLore.add("§8• +5 - zaproszenie nowego gracza");
+            infoLore.add("§8• +10 - ustawienie warpu");
+            infoLore.add("§8• +3 - aktywność członków działki");
+            infoMeta.setLore(infoLore);
+            infoButton.setItemMeta(infoMeta);
+        }
+        inv.setItem(4, infoButton);
+
+        player.openInventory(inv);
     }
 
     public void showBoundaryParticlesVertical(ProtectedRegion region, Player player, int edgeStep) {
@@ -1833,13 +2188,11 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 spawnSmoothFireParticles(player, loc);
             }
 
-            // Lewa krawędź (zachód) - x = minX
             for (int z = region.minZ; z <= region.maxZ; z++) {
                 Location loc = new Location(world, region.minX + 0.5, y, z + 0.5);
                 spawnSmoothFireParticles(player, loc);
             }
 
-            // Prawa krawędź (wschód) - x = maxX
             for (int z = region.minZ; z <= region.maxZ; z++) {
                 Location loc = new Location(world, region.maxX + 0.5, y, z + 0.5);
                 spawnSmoothFireParticles(player, loc);
