@@ -44,6 +44,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.inventory.InventoryClickEvent;
+import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -53,6 +54,10 @@ import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 // Suppress spell-checking warnings for specific words
 // noinspection SpellCheckingInspection
+
+import me.twojanazwa.App;
+import net.milkbowl.vault.economy.Economy;
+import net.milkbowl.vault.economy.EconomyResponse;
 
 public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
@@ -99,6 +104,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 gracz.sendMessage(" §7/dzialka zapros <nazwa> <nick> §8- §fZaprasza gracza na działkę");
                 gracz.sendMessage(" §7/dzialka opusc <nazwa> §8- §fGracz opuszcza działkę");
                 gracz.sendMessage(" §7/dzialka zastepca <nazwa> <nick> §8- §fUstawia zastępcę działki");
+                gracz.sendMessage(" §7/dzialka rynek §8- §fWyświetla rynek działek");
+                gracz.sendMessage(" §7/dzialka sprzedaj <nazwa> <cena> §8- §fWystawia działkę na rynek");
+                gracz.sendMessage(" §7/dzialka anuluj <nazwa> §8- §fZdejmuje działkę z rynku");
+                gracz.sendMessage(" §7/dzialka kup <nazwa> §8- §fKupuje działkę z rynku");
                 gracz.sendMessage(" §7/działka admintp <nazwa> §8- §fAdmin teleportuje na działkę");
                 gracz.sendMessage(" §7/działka adminusun <nazwa> §8- §fAdmin usuwa działkę");
                 gracz.sendMessage(" §7/dzialka test §8- §fTworzy testową działkę do debugowania");
@@ -533,6 +542,173 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     gracz.sendMessage("§aUstawiono '" + nick + "' jako zastępcę działki '" + nazwa + "'.");
                     return true;
                 }
+                case "sprzedaj" -> {
+                    if (args.length < 3) {
+                        gracz.sendMessage("\u00A7cUzycie: /dzialka sprzedaj <nazwa> <cena>");
+                        return true;
+                    }
+
+                    String nazwa = args[1];
+                    ProtectedRegion region = findOwnedPlot(gracz.getUniqueId(), nazwa);
+                    if (region == null) {
+                        gracz.sendMessage("\u00A7cNie masz dzialki o nazwie '" + nazwa + "'.");
+                        return true;
+                    }
+                    if (region.isOnMarket) {
+                        gracz.sendMessage("\u00A7cTa dzialka jest juz wystawiona na rynek.");
+                        return true;
+                    }
+
+                    double cena;
+                    try {
+                        cena = Double.parseDouble(args[2].replace(',', '.'));
+                    } catch (NumberFormatException e) {
+                        gracz.sendMessage("\u00A7cCena musi byc poprawna liczba. Uzycie: /dzialka sprzedaj <nazwa> <cena>");
+                        return true;
+                    }
+
+                    if (!Double.isFinite(cena) || cena <= 0.0D) {
+                        gracz.sendMessage("\u00A7cCena musi byc wieksza od 0.");
+                        return true;
+                    }
+
+                    region.isOnMarket = true;
+                    region.marketPrice = cena;
+                    savePlots();
+
+                    gracz.sendMessage("\u00A7aDzialka '" + region.plotName + "' zostala wystawiona na sprzedaz za \u00A7e"
+                            + formatPrice(cena) + "\u00A7a.");
+                    if (getEconomyProvider() == null) {
+                        gracz.sendMessage("\u00A7eUwaga: serwer nie ma poprawnie skonfigurowanego Vault/economy, wiec kupno z rynku pozostaje zablokowane do czasu konfiguracji.");
+                    }
+                    return true;
+                }
+                case "anuluj" -> {
+                    if (args.length < 2) {
+                        gracz.sendMessage("\u00A7cUzycie: /dzialka anuluj <nazwa>");
+                        return true;
+                    }
+
+                    String nazwa = args[1];
+                    ProtectedRegion region = findOwnedPlot(gracz.getUniqueId(), nazwa);
+                    if (region == null) {
+                        gracz.sendMessage("\u00A7cNie masz dzialki o nazwie '" + nazwa + "'.");
+                        return true;
+                    }
+                    if (!region.isOnMarket) {
+                        gracz.sendMessage("\u00A7cTa dzialka nie jest obecnie wystawiona na rynek.");
+                        return true;
+                    }
+
+                    region.isOnMarket = false;
+                    region.marketPrice = 0.0D;
+                    savePlots();
+                    gracz.sendMessage("\u00A7aDzialka '" + region.plotName + "' zostala zdjeta z rynku.");
+                    return true;
+                }
+                case "rynek" -> {
+                    openMarketPanel(gracz, 1);
+                    return true;
+                }
+                case "kup" -> {
+                    if (args.length < 2) {
+                        gracz.sendMessage("\u00A7cUzycie: /dzialka kup <nazwa>");
+                        return true;
+                    }
+
+                    String nazwa = args[1];
+                    ProtectedRegion region = getRegionByName(nazwa);
+                    if (region == null) {
+                        gracz.sendMessage("\u00A7cNie znaleziono dzialki o nazwie '" + nazwa + "'.");
+                        return true;
+                    }
+                    if (!region.isOnMarket) {
+                        gracz.sendMessage("\u00A7cTa dzialka nie jest wystawiona na rynek.");
+                        return true;
+                    }
+
+                    UUID sellerUuid = findPlotOwnerUuid(region);
+                    if (sellerUuid == null) {
+                        gracz.sendMessage("\u00A7cNie udalo sie ustalic wlasciciela tej oferty. Oferta nie zostala przetworzona.");
+                        plugin.getLogger().warning("Nie znaleziono UUID wĹ‚aĹ›ciciela dla dziaĹ‚ki na rynku: " + region.plotName);
+                        return true;
+                    }
+                    if (sellerUuid.equals(gracz.getUniqueId()) || region.owner.equalsIgnoreCase(gracz.getName())) {
+                        gracz.sendMessage("\u00A7cNie mozesz kupic wlasnej dzialki.");
+                        return true;
+                    }
+
+                    List<ProtectedRegion> buyerPlots = dzialki.computeIfAbsent(gracz.getUniqueId(), k -> new ArrayList<>());
+                    if (buyerPlots.size() >= 3) {
+                        gracz.sendMessage("\u00A7cMozesz posiadac maksymalnie 3 dzialki, wiec najpierw zwolnij miejsce.");
+                        return true;
+                    }
+
+                    Economy economy = getEconomyProvider();
+                    if (economy == null) {
+                        gracz.sendMessage("\u00A7cKupno dzialek nie moze zadzialac bez Vault i aktywnego pluginu ekonomii.");
+                        gracz.sendMessage("\u00A77Dodaj na serwer \u00A7fVault\u00A77 oraz plugin z providerem Economy, np. EssentialsX Economy lub CMI.");
+                        return true;
+                    }
+
+                    double cena = region.marketPrice;
+                    if (!Double.isFinite(cena) || cena <= 0.0D) {
+                        gracz.sendMessage("\u00A7cTa oferta ma niepoprawna cene i nie moze zostac kupiona.");
+                        return true;
+                    }
+                    if (!economy.has(gracz, cena)) {
+                        gracz.sendMessage("\u00A7cNie masz wystarczajacych srodkow. Potrzebujesz \u00A7e" + formatPrice(cena) + "\u00A7c.");
+                        return true;
+                    }
+
+                    OfflinePlayer seller = Bukkit.getOfflinePlayer(sellerUuid);
+                    String previousOwnerName = region.owner;
+
+                    EconomyResponse withdraw = economy.withdrawPlayer(gracz, cena);
+                    if (!withdraw.transactionSuccess()) {
+                        gracz.sendMessage("\u00A7cNie udalo sie pobrac pieniedzy z Twojego konta: "
+                                + (withdraw.errorMessage != null ? withdraw.errorMessage : "nieznany blad"));
+                        return true;
+                    }
+
+                    EconomyResponse deposit = economy.depositPlayer(seller, cena);
+                    if (!deposit.transactionSuccess()) {
+                        economy.depositPlayer(gracz, cena);
+                        gracz.sendMessage("\u00A7cNie udalo sie przelac pieniedzy sprzedajacemu, wiec transakcja zostala cofnieta.");
+                        plugin.getLogger().warning("Nie udaĹ‚o siÄ™ wypĹ‚aciÄ‡ pieniÄ™dzy za dziaĹ‚kÄ™ "
+                                + region.plotName + ": " + deposit.errorMessage);
+                        return true;
+                    }
+
+                    List<ProtectedRegion> sellerPlots = dzialki.get(sellerUuid);
+                    if (sellerPlots == null || !sellerPlots.remove(region)) {
+                        economy.withdrawPlayer(seller, cena);
+                        economy.depositPlayer(gracz, cena);
+                        gracz.sendMessage("\u00A7cOferta rynku stala sie nieaktualna w trakcie zakupu. Sprobuj ponownie.");
+                        plugin.getLogger().warning("Nie udaĹ‚o siÄ™ usunÄ…Ä‡ dziaĹ‚ki " + region.plotName + " z listy sprzedajÄ…cego.");
+                        return true;
+                    }
+                    if (sellerPlots.isEmpty()) {
+                        dzialki.remove(sellerUuid);
+                    }
+
+                    resetPlotAfterSale(region, gracz);
+                    buyerPlots.add(region);
+                    savePlots();
+
+                    gracz.sendMessage("\u00A7aKupiono dzialke '" + region.plotName + "' za \u00A7e" + formatPrice(cena)
+                            + "\u00A7a. Ustawienia dzialki zostaly zresetowane do domyslnych.");
+
+                    Player sellerOnline = Bukkit.getPlayer(sellerUuid);
+                    if (sellerOnline != null && sellerOnline.isOnline()) {
+                        sellerOnline.sendMessage("\u00A7aGracz \u00A7e" + gracz.getName() + " \u00A7akupil Twoja dzialke '"
+                                + region.plotName + "' za \u00A7e" + formatPrice(cena) + "\u00A7a.");
+                    } else {
+                        plugin.getLogger().info("DziaĹ‚ka '" + region.plotName + "' zostaĹ‚a sprzedana. Poprzedni wĹ‚aĹ›ciciel: "
+                                + previousOwnerName + ", nowy wĹ‚aĹ›ciciel: " + gracz.getName());
+                    }
+                    return true;
+                }
                 case "test" -> {
                     // Tymczasowa komenda testowa do debugowania systemu zapisywania/ładowania
                     plugin.getLogger().info("Komenda test wywołana przez gracza: " + gracz.getName());
@@ -630,11 +806,12 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         if (args.length == 1) {
             completions.addAll(List.of(
                     "stworz", "usun", "tp", "lista", "panel", "warp", "stworzwarp", "top",
-                    "zapros", "opusc", "zastepca", "dolacz", "oplac", "admintp", "adminusun", "test", "debug", "help", "pomoc"
+                    "zapros", "opusc", "zastepca", "dolacz", "oplac", "rynek", "sprzedaj",
+                    "anuluj", "kup", "admintp", "adminusun", "test", "debug", "help", "pomoc"
             ));
         } else if (args.length == 2) {
             switch (args[0].toLowerCase()) {
-                case "usun", "tp", "panel", "warp", "stworzwarp", "opusc", "admintp", "adminusun" -> {
+                case "usun", "tp", "panel", "warp", "stworzwarp", "opusc", "admintp", "adminusun", "sprzedaj", "anuluj" -> {
                     List<ProtectedRegion> playerPlots = dzialki
                             .getOrDefault(gracz.getUniqueId(), Collections.emptyList());
                     for (ProtectedRegion r : playerPlots) {
@@ -664,6 +841,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         }
                     }
                 }
+                case "kup" -> {
+                    for (ProtectedRegion r : getMarketPlots()) {
+                        if (r.plotName != null) {
+                            completions.add(r.plotName);
+                        }
+                    }
+                }
             }
         } else if (args.length == 3 && (args[0].equalsIgnoreCase("zapros")
                 || args[0].equalsIgnoreCase("zastepca"))) {
@@ -681,6 +865,261 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     public JavaPlugin getPlugin() {
         return plugin;
+    }
+
+    private Economy getEconomyProvider() {
+        if (plugin instanceof App app) {
+            return app.getEconomy();
+        }
+        return null;
+    }
+
+    private ProtectedRegion findOwnedPlot(UUID ownerUuid, String plotName) {
+        for (ProtectedRegion region : dzialki.getOrDefault(ownerUuid, Collections.emptyList())) {
+            if (samePlotName(region.plotName, plotName)) {
+                return region;
+            }
+        }
+        return null;
+    }
+
+    private UUID findPlotOwnerUuid(ProtectedRegion region) {
+        for (Map.Entry<UUID, List<ProtectedRegion>> entry : dzialki.entrySet()) {
+            if (entry.getValue().contains(region)) {
+                return entry.getKey();
+            }
+        }
+        return null;
+    }
+
+    private List<ProtectedRegion> getMarketPlots() {
+        List<ProtectedRegion> marketPlots = new ArrayList<>();
+        for (List<ProtectedRegion> plotList : dzialki.values()) {
+            for (ProtectedRegion region : plotList) {
+                if (region.isOnMarket) {
+                    marketPlots.add(region);
+                }
+            }
+        }
+        marketPlots.sort((a, b) -> a.plotName.compareToIgnoreCase(b.plotName));
+        return marketPlots;
+    }
+
+    private String formatPrice(double price) {
+        return String.format("%.2f", price);
+    }
+
+    private void resetPlotAfterSale(ProtectedRegion region, Player newOwner) {
+        long now = System.currentTimeMillis();
+
+        region.owner = newOwner.getName();
+        region.invitedPlayers.clear();
+        region.warp = null;
+        region.points = 0;
+        region.deputy = null;
+
+        region.allowBuild = true;
+        region.allowDestroy = true;
+        region.allowChest = true;
+        region.allowFlight = false;
+        region.allowEnter = true;
+        region.isDay = true;
+        region.allowPickup = false;
+        region.allowPotion = false;
+        region.allowKillMobs = false;
+        region.allowSpawnMobs = false;
+        region.allowSpawnerBreak = false;
+        region.allowBeaconPlace = false;
+        region.allowBeaconBreak = false;
+        region.mobGriefing = false;
+
+        region.isOnMarket = false;
+        region.marketPrice = 0.0D;
+
+        region.lastPaymentTime = now;
+        region.paidUntil = now + (3L * 24L * 60L * 60L * 1000L);
+
+        region.playerPermissions.clear();
+    }
+
+    private void openMarketPanel(Player player, int page) {
+        List<ProtectedRegion> marketPlots = getMarketPlots();
+        int plotsPerPage = 45;
+        int totalPages = Math.max(1, (int) Math.ceil((double) marketPlots.size() / plotsPerPage));
+        page = Math.max(1, Math.min(page, totalPages));
+
+        Inventory inv = Bukkit.createInventory(null, 54, "\u00A72\u00A7lRynek Dzialek - Strona " + page + "/" + totalPages);
+
+        ItemStack filler = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
+        ItemMeta fillerMeta = filler.getItemMeta();
+        if (fillerMeta != null) {
+            fillerMeta.setDisplayName(" ");
+            filler.setItemMeta(fillerMeta);
+        }
+        for (int i = 45; i < 54; i++) {
+            inv.setItem(i, filler);
+        }
+
+        ItemStack info = new ItemStack(Material.BOOK);
+        ItemMeta infoMeta = info.getItemMeta();
+        if (infoMeta != null) {
+            infoMeta.setDisplayName("\u00A7a\u00A7lJak dziala rynek?");
+            infoMeta.setLore(List.of(
+                    "\u00A77Lewy klik: \u00A7fKup dzialke",
+                    "\u00A77Prawy klik: \u00A7fTeleport na dzialke",
+                    "\u00A77Shift i drag sa zablokowane",
+                    getEconomyProvider() == null
+                            ? "\u00A7cKupno wymaga Vault i pluginu ekonomii"
+                            : "\u00A7aEkonomia jest aktywna"
+            ));
+            info.setItemMeta(infoMeta);
+        }
+        inv.setItem(49, info);
+
+        if (page > 1) {
+            ItemStack prev = new ItemStack(Material.ARROW);
+            ItemMeta prevMeta = prev.getItemMeta();
+            if (prevMeta != null) {
+                prevMeta.setDisplayName("\u00A7c\u00AB Poprzednia strona");
+                prev.setItemMeta(prevMeta);
+            }
+            inv.setItem(45, prev);
+        }
+
+        if (page < totalPages) {
+            ItemStack next = new ItemStack(Material.ARROW);
+            ItemMeta nextMeta = next.getItemMeta();
+            if (nextMeta != null) {
+                nextMeta.setDisplayName("\u00A7aNastepna strona \u00BB");
+                next.setItemMeta(nextMeta);
+            }
+            inv.setItem(53, next);
+        }
+
+        ItemStack refresh = new ItemStack(Material.COMPASS);
+        ItemMeta refreshMeta = refresh.getItemMeta();
+        if (refreshMeta != null) {
+            refreshMeta.setDisplayName("\u00A7eOdswiez rynek");
+            refreshMeta.setLore(List.of("\u00A77Aktywne oferty: \u00A7a" + marketPlots.size()));
+            refresh.setItemMeta(refreshMeta);
+        }
+        inv.setItem(51, refresh);
+
+        if (marketPlots.isEmpty()) {
+            ItemStack empty = new ItemStack(Material.BARRIER);
+            ItemMeta emptyMeta = empty.getItemMeta();
+            if (emptyMeta != null) {
+                emptyMeta.setDisplayName("\u00A7cBrak ofert");
+                emptyMeta.setLore(List.of("\u00A77Na rynku nie ma teraz zadnych dzialek."));
+                empty.setItemMeta(emptyMeta);
+            }
+            inv.setItem(22, empty);
+            player.openInventory(inv);
+            return;
+        }
+
+        int startIndex = (page - 1) * plotsPerPage;
+        int endIndex = Math.min(startIndex + plotsPerPage, marketPlots.size());
+
+        for (int i = startIndex; i < endIndex; i++) {
+            ProtectedRegion plot = marketPlots.get(i);
+            int slot = i - startIndex;
+
+            ItemStack item = new ItemStack(Material.PLAYER_HEAD);
+            SkullMeta meta = (SkullMeta) item.getItemMeta();
+            if (meta != null) {
+                meta.setOwningPlayer(Bukkit.getOfflinePlayer(plot.owner));
+                meta.setDisplayName("\u00A7d\u00A7l" + plot.plotName);
+                List<String> lore = new ArrayList<>();
+                lore.add("\u00A77Punkty: \u00A7a" + plot.points);
+                lore.add("\u00A77Wlasciciel: \u00A7a" + plot.owner);
+                lore.add("\u00A77Cena: \u00A7a" + formatPrice(plot.marketPrice));
+                lore.add("\u00A77Rozmiar: \u00A7d" + (plot.maxX - plot.minX + 1) + "x" + (plot.maxZ - plot.minZ + 1));
+                lore.add("");
+                lore.add("\u00A7aLewy klik - kup dzialke");
+                lore.add("\u00A7ePrawy klik - teleport na dzialke");
+                meta.setLore(lore);
+                item.setItemMeta(meta);
+            }
+
+            inv.setItem(slot, item);
+        }
+
+        player.openInventory(inv);
+    }
+
+    private void handleMarketPanelClick(InventoryClickEvent event, Player player, String title) {
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null || !clickedItem.hasItemMeta()) {
+            return;
+        }
+
+        String displayName = clickedItem.getItemMeta().getDisplayName();
+        int currentPage = getPanelPage(title);
+
+        if ("\u00A7c\u00AB Poprzednia strona".equals(displayName) && currentPage > 1) {
+            openMarketPanel(player, currentPage - 1);
+            return;
+        }
+        if ("\u00A7aNastepna strona \u00BB".equals(displayName)) {
+            openMarketPanel(player, currentPage + 1);
+            return;
+        }
+        if ("\u00A7eOdswiez rynek".equals(displayName)) {
+            openMarketPanel(player, currentPage);
+            return;
+        }
+        if ("\u00A7a\u00A7lJak dziala rynek?".equals(displayName) || "\u00A7cBrak ofert".equals(displayName)) {
+            return;
+        }
+
+        String plotName = displayName.replace("\u00A7d\u00A7l", "");
+        ProtectedRegion region = getRegionByName(plotName);
+        if (region == null || !region.isOnMarket) {
+            player.sendMessage("\u00A7cTa oferta nie jest juz dostepna.");
+            openMarketPanel(player, currentPage);
+            return;
+        }
+
+        if (event.isRightClick()) {
+            teleportToPlotFromMarket(player, region);
+            return;
+        }
+
+        if (event.isLeftClick()) {
+            player.closeInventory();
+            player.performCommand("dzialka kup " + region.plotName);
+        }
+    }
+
+    private void teleportToPlotFromMarket(Player player, ProtectedRegion plot) {
+        if (!plot.allowEnter && !plot.owner.equals(player.getName())
+                && !plot.invitedPlayers.contains(player.getUniqueId())) {
+            player.sendMessage("\u00A7cNie masz uprawnien do wejscia na te dzialke.");
+            return;
+        }
+
+        player.teleport(plot.center.clone().add(0.5, 1, 0.5));
+        player.sendMessage("\u00A7aTeleportowano na dzialke \u00A7e" + plot.plotName
+                + "\u00A7a wlasciciela \u00A7b" + plot.owner + "\u00A7a.");
+    }
+
+    private int getPanelPage(String title) {
+        String[] titleParts = title.split(" - Strona ");
+        if (titleParts.length < 2) {
+            return 1;
+        }
+
+        String[] pageParts = titleParts[1].split("/");
+        if (pageParts.length < 1) {
+            return 1;
+        }
+
+        try {
+            return Integer.parseInt(pageParts[0]);
+        } catch (NumberFormatException e) {
+            return 1;
+        }
     }
 
     public void savePlots() {
@@ -727,6 +1166,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     config.set(regionKey + ".warp", r.warp);
                     config.set(regionKey + ".points", r.points);
                     config.set(regionKey + ".deputy", r.deputy);
+                    config.set(regionKey + ".lastPaymentTime", r.lastPaymentTime);
+                    config.set(regionKey + ".paidUntil", r.paidUntil);
 
                     // Zapisz wszystkie globalne uprawnienia
                     config.set(regionKey + ".allowBuild", r.allowBuild);
@@ -847,6 +1288,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         region.warp = warp;
                         region.points = points;
                         region.deputy = deputy;
+                        region.lastPaymentTime = config.getLong(fullKey + ".lastPaymentTime", region.lastPaymentTime);
+                        region.paidUntil = config.getLong(fullKey + ".paidUntil", region.paidUntil);
 
                         // Load all permission settings
                         region.allowBuild = config.getBoolean(fullKey + ".allowBuild", true);
@@ -863,6 +1306,10 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         region.allowBeaconPlace = config.getBoolean(fullKey + ".allowBeaconPlace", false);
                         region.allowBeaconBreak = config.getBoolean(fullKey + ".allowBeaconBreak", false);
                         region.mobGriefing = config.getBoolean(fullKey + ".mobGriefing", false);
+
+                        // Ładuj dane rynku
+                        region.isOnMarket = config.getBoolean(fullKey + ".isOnMarket", false);
+                        region.marketPrice = config.getDouble(fullKey + ".marketPrice", 0.0);
 
                         // Ładuj indywidualne uprawnienia graczy
                         if (config.contains(fullKey + ".playerPermissions")) {
@@ -1318,6 +1765,12 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
 
         // Obsługa panelu graczy
+        if (title.startsWith("\u00A72\u00A7lRynek Dzialek - Strona ")) {
+            event.setCancelled(true);
+            handleMarketPanelClick(event, p, title);
+            return;
+        }
+
         if (title.startsWith("Gracze: ")) {
             event.setCancelled(true);
             handlePlayersPanel(event, p, title);
@@ -1335,6 +1788,13 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     // === OBSŁUGA GŁÓWNEGO PANELU DZIAŁKI ===
+    @EventHandler
+    public void onInventoryDrag(InventoryDragEvent event) {
+        if (event.getView().getTitle().startsWith("\u00A72\u00A7lRynek Dzialek - Strona ")) {
+            event.setCancelled(true);
+        }
+    }
+
     private void handleMainPanelClick(InventoryClickEvent event, Player player, String title) {
         ItemStack clickedItem = event.getCurrentItem();
         if (clickedItem == null || !clickedItem.hasItemMeta()) {
