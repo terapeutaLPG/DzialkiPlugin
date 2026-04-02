@@ -56,12 +56,17 @@ import org.bukkit.scheduler.BukkitRunnable;
 // noinspection SpellCheckingInspection
 
 import me.twojanazwa.App;
+import me.twojanazwa.border.PlotBorderStyle;
 import net.milkbowl.vault.economy.Economy;
 import net.milkbowl.vault.economy.EconomyResponse;
 
 public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
     private final JavaPlugin plugin;
+    private static final int BORDER_TRIGGER_DISTANCE = 10;
+    private static final int BORDER_VERTICAL_RADIUS = 4;
+    private static final int BORDER_VISIBLE_RADIUS = 24;
+    private static final long BORDER_PREVIEW_DURATION_TICKS = 80L;
     // Pierwsza deklaracja – pozostawiamy tylko tę
     private final Map<UUID, List<ProtectedRegion>> dzialki = new HashMap<>();
     private final Map<UUID, BossBar> bossBary = new HashMap<>();
@@ -932,6 +937,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         region.allowBeaconPlace = false;
         region.allowBeaconBreak = false;
         region.mobGriefing = false;
+        region.memberBorderStyleId = PlotBorderStyle.SPRING.getId();
+        region.visitorBorderStyleId = PlotBorderStyle.CLOUDY.getId();
 
         region.isOnMarket = false;
         region.marketPrice = 0.0D;
@@ -1184,6 +1191,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                     config.set(regionKey + ".allowBeaconPlace", r.allowBeaconPlace);
                     config.set(regionKey + ".allowBeaconBreak", r.allowBeaconBreak);
                     config.set(regionKey + ".mobGriefing", r.mobGriefing);
+                    config.set(regionKey + ".memberBorderStyle", r.memberBorderStyleId);
+                    config.set(regionKey + ".visitorBorderStyle", r.visitorBorderStyleId);
 
                     // Zapisz dane rynku
                     config.set(regionKey + ".isOnMarket", r.isOnMarket);
@@ -1306,6 +1315,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                         region.allowBeaconPlace = config.getBoolean(fullKey + ".allowBeaconPlace", false);
                         region.allowBeaconBreak = config.getBoolean(fullKey + ".allowBeaconBreak", false);
                         region.mobGriefing = config.getBoolean(fullKey + ".mobGriefing", false);
+                        region.memberBorderStyleId = PlotBorderStyle.byId(config.getString(fullKey + ".memberBorderStyle")).getId();
+                        region.visitorBorderStyleId = PlotBorderStyle.byId(config.getString(fullKey + ".visitorBorderStyle")).getId();
 
                         // Ładuj dane rynku
                         region.isOnMarket = config.getBoolean(fullKey + ".isOnMarket", false);
@@ -1419,6 +1430,75 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
 
         // Jeśli nie, sprawdź czy jest w pobliżu (10 bloków)
         return getNearbyRegion(loc, 10);
+    }
+
+    public ProtectedRegion getRegionNearBoundary(Location loc, int radius) {
+        ProtectedRegion bestRegion = null;
+        double bestDistance = Double.MAX_VALUE;
+
+        for (List<ProtectedRegion> sublist : dzialki.values()) {
+            for (ProtectedRegion region : sublist) {
+                double distance = getDistanceToPlotBoundary(loc, region);
+                if (distance <= radius && distance < bestDistance) {
+                    bestDistance = distance;
+                    bestRegion = region;
+                }
+            }
+        }
+        return bestRegion;
+    }
+
+    private double getDistanceToPlotBoundary(Location loc, ProtectedRegion region) {
+        double x = loc.getX();
+        double z = loc.getZ();
+
+        boolean insideX = x >= region.minX && x <= region.maxX;
+        boolean insideZ = z >= region.minZ && z <= region.maxZ;
+
+        if (insideX && insideZ) {
+            double distanceToXEdge = Math.min(Math.abs(x - region.minX), Math.abs(region.maxX - x));
+            double distanceToZEdge = Math.min(Math.abs(z - region.minZ), Math.abs(region.maxZ - z));
+            return Math.min(distanceToXEdge, distanceToZEdge);
+        }
+
+        double dx = 0.0D;
+        if (x < region.minX) {
+            dx = region.minX - x;
+        } else if (x > region.maxX) {
+            dx = x - region.maxX;
+        }
+
+        double dz = 0.0D;
+        if (z < region.minZ) {
+            dz = region.minZ - z;
+        } else if (z > region.maxZ) {
+            dz = z - region.maxZ;
+        }
+
+        return Math.sqrt((dx * dx) + (dz * dz));
+    }
+
+    public boolean isPlayerPlotMember(ProtectedRegion region, Player player) {
+        return region.owner.equalsIgnoreCase(player.getName())
+                || player.getUniqueId().equals(region.deputy)
+                || region.invitedPlayers.contains(player.getUniqueId());
+    }
+
+    public boolean isStandingOnPlot(Player player, ProtectedRegion region) {
+        Location location = player.getLocation();
+        return region.contains(location.getBlockX(), location.getBlockY(), location.getBlockZ());
+    }
+
+    private PlotBorderStyle getMemberBorderStyle(ProtectedRegion region) {
+        return PlotBorderStyle.byId(region.memberBorderStyleId);
+    }
+
+    private PlotBorderStyle getVisitorBorderStyle(ProtectedRegion region) {
+        return PlotBorderStyle.byId(region.visitorBorderStyleId);
+    }
+
+    private PlotBorderStyle getBorderStyleForViewer(ProtectedRegion region, Player player) {
+        return isPlayerPlotMember(region, player) ? getMemberBorderStyle(region) : getVisitorBorderStyle(region);
     }
 
     public boolean isInAnyPlot(Player player) {
@@ -1645,6 +1725,7 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         // === USTAWIENIA SPECJALNE ===
         inv.setItem(22, toggleItem(r.isDay, "§f§lCzas na działce",
                 "Ustawia dzień lub noc na działce", Material.CLOCK));
+        inv.setItem(23, createBorderOverviewItem(r));
 
         // === PRZYCISKI NAWIGACJI ===
         ItemStack backButton = new ItemStack(Material.ARROW);
@@ -1658,6 +1739,99 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     // === GUI PUNKTÓW DZIAŁKI ===
+    private ItemStack createBorderOverviewItem(ProtectedRegion region) {
+        ItemStack item = new ItemStack(Material.BEACON);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            PlotBorderStyle memberStyle = getMemberBorderStyle(region);
+            PlotBorderStyle visitorStyle = getVisitorBorderStyle(region);
+            meta.setDisplayName("§5§lWyglad borderow");
+            meta.setLore(List.of(
+                    "§7Dla czlonkow: §a" + memberStyle.getDisplayName(),
+                    "§7Dla obcych: §c" + visitorStyle.getDisplayName(),
+                    "",
+                    "§7Kliknij, aby zmienic style",
+                    "§8Oddzielne style dla czlonkow i obcych",
+                    "§8Efekt pojawia sie przy granicy dzialki"
+            ));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private void openBorderOverviewPanel(ProtectedRegion region, Player player) {
+        Inventory inv = Bukkit.createInventory(null, 27, "§5§lBordery: " + region.plotName);
+        inv.setItem(11, createBorderAudienceItem(region, true));
+        inv.setItem(15, createBorderAudienceItem(region, false));
+
+        ItemStack backButton = new ItemStack(Material.ARROW);
+        ItemMeta backMeta = backButton.getItemMeta();
+        if (backMeta != null) {
+            backMeta.setDisplayName("§c« Powrot do ustawien");
+            backMeta.setLore(List.of("§7Wroc do panelu ustawien dzialki"));
+            backButton.setItemMeta(backMeta);
+        }
+        inv.setItem(22, backButton);
+        player.openInventory(inv);
+    }
+
+    private ItemStack createBorderAudienceItem(ProtectedRegion region, boolean memberStyle) {
+        PlotBorderStyle style = memberStyle ? getMemberBorderStyle(region) : getVisitorBorderStyle(region);
+        ItemStack item = new ItemStack(memberStyle ? Material.LIME_DYE : Material.RED_DYE);
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName(memberStyle ? "§a§lDla czlonkow" : "§c§lDla obcych");
+            meta.setLore(List.of(
+                    "§7Aktualny styl: §f" + style.getDisplayName(),
+                    "§7Czasteczki: §d" + style.getParticleLabel(),
+                    "",
+                    "§eKliknij, aby wybrac wyglad"
+            ));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
+    private void openBorderStylePicker(ProtectedRegion region, Player player, boolean memberStyle) {
+        String audienceLabel = memberStyle ? "Czlonkowie" : "Obcy";
+        Inventory inv = Bukkit.createInventory(null, 54, "§5§lStyl Borderu - " + audienceLabel + ": " + region.plotName);
+
+        int slot = 10;
+        PlotBorderStyle selected = memberStyle ? getMemberBorderStyle(region) : getVisitorBorderStyle(region);
+        for (PlotBorderStyle style : PlotBorderStyle.values()) {
+            if (slot == 17 || slot == 26 || slot == 35) {
+                slot += 2;
+            }
+            inv.setItem(slot++, createBorderStyleItem(style, selected == style, memberStyle));
+        }
+
+        ItemStack backButton = new ItemStack(Material.ARROW);
+        ItemMeta backMeta = backButton.getItemMeta();
+        if (backMeta != null) {
+            backMeta.setDisplayName("§c« Powrot do borderow");
+            backMeta.setLore(List.of("§7Wroc do wyboru grupy odbiorcow"));
+            backButton.setItemMeta(backMeta);
+        }
+        inv.setItem(49, backButton);
+        player.openInventory(inv);
+    }
+
+    private ItemStack createBorderStyleItem(PlotBorderStyle style, boolean selected, boolean memberStyle) {
+        ItemStack item = new ItemStack(style.getIcon());
+        ItemMeta meta = item.getItemMeta();
+        if (meta != null) {
+            meta.setDisplayName((selected ? "§a" : "§d") + style.getDisplayName());
+            meta.setLore(List.of(
+                    "§7Czasteczki: §d" + style.getParticleLabel(),
+                    "§7Typ: §f" + (memberStyle ? "Dla czlonkow" : "Dla obcych"),
+                    "",
+                    selected ? "§aAktualnie wybrane" : "§eKliknij, aby wybrac"
+            ));
+            item.setItemMeta(meta);
+        }
+        return item;
+    }
+
     private void openPointsPanel(ProtectedRegion r, Player p) {
         Inventory inv = Bukkit.createInventory(null, 27, "§a§lPunkty: " + r.plotName);
 
@@ -1751,6 +1925,18 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         }
 
         // === OBSŁUGA PANELU PUNKTÓW ===
+        if (title.startsWith("§5§lBordery: ")) {
+            event.setCancelled(true);
+            handleBorderOverviewClick(event, p, title);
+            return;
+        }
+
+        if (title.startsWith("§5§lStyl Borderu - ")) {
+            event.setCancelled(true);
+            handleBorderStylePickerClick(event, p, title);
+            return;
+        }
+
         if (title.startsWith("§a§lPunkty: ")) {
             event.setCancelled(true);
             handlePointsPanelClick(event, p, title);
@@ -1790,7 +1976,14 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     // === OBSŁUGA GŁÓWNEGO PANELU DZIAŁKI ===
     @EventHandler
     public void onInventoryDrag(InventoryDragEvent event) {
-        if (event.getView().getTitle().startsWith("\u00A72\u00A7lRynek Dzialek - Strona ")) {
+        String title = event.getView().getTitle();
+        if (title.startsWith("§6§lPanel Działki: ")
+                || title.startsWith("§d§lUstawienia: ")
+                || title.startsWith("§5§lBordery: ")
+                || title.startsWith("§5§lStyl Borderu - ")
+                || title.startsWith("§a§lPunkty: ")
+                || title.startsWith("§6§lRanking Działek - Strona ")
+                || title.startsWith("\u00A72\u00A7lRynek Dzialek - Strona ")) {
             event.setCancelled(true);
         }
     }
@@ -1879,6 +2072,16 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
             return;
         }
 
+        if (displayName.equals("§5§lWyglad borderow")) {
+            if (!isStandingOnPlot(player, region)) {
+                player.sendMessage("§cMusisz stac na tej dzialce, aby zmienic styl borderu.");
+                player.closeInventory();
+                return;
+            }
+            openBorderOverviewPanel(region, player);
+            return;
+        }
+
         // Zmienna do sprawdzenia czy nastąpiła zmiana
         boolean changed = false;
         String message = "";
@@ -1963,6 +2166,91 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
                 openSettingsPanel(region, player);
             }, 1L);
         }
+    }
+
+    private void handleBorderOverviewClick(InventoryClickEvent event, Player player, String title) {
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null || !clickedItem.hasItemMeta()) {
+            return;
+        }
+
+        String plotName = title.substring("§5§lBordery: ".length());
+        ProtectedRegion region = getRegionByName(plotName);
+        if (region == null) {
+            player.closeInventory();
+            player.sendMessage("§cNie mozna znalezc tej dzialki.");
+            return;
+        }
+
+        String displayName = clickedItem.getItemMeta().getDisplayName();
+        if (displayName.equals("§c« Powrot do ustawien")) {
+            openSettingsPanel(region, player);
+            return;
+        }
+
+        if (!isStandingOnPlot(player, region)) {
+            player.sendMessage("§cMusisz stac na tej dzialce, aby zmienic styl borderu.");
+            player.closeInventory();
+            return;
+        }
+
+        if (displayName.equals("§a§lDla czlonkow")) {
+            openBorderStylePicker(region, player, true);
+        } else if (displayName.equals("§c§lDla obcych")) {
+            openBorderStylePicker(region, player, false);
+        }
+    }
+
+    private void handleBorderStylePickerClick(InventoryClickEvent event, Player player, String title) {
+        ItemStack clickedItem = event.getCurrentItem();
+        if (clickedItem == null || !clickedItem.hasItemMeta()) {
+            return;
+        }
+
+        String plotName = title.substring(title.indexOf(": ") + 2);
+        ProtectedRegion region = getRegionByName(plotName);
+        if (region == null) {
+            player.closeInventory();
+            player.sendMessage("§cNie mozna znalezc tej dzialki.");
+            return;
+        }
+
+        String displayName = clickedItem.getItemMeta().getDisplayName();
+        if (displayName.equals("§c« Powrot do borderow")) {
+            openBorderOverviewPanel(region, player);
+            return;
+        }
+
+        if (!isStandingOnPlot(player, region)) {
+            player.sendMessage("§cMusisz stac na tej dzialce, aby zmienic styl borderu.");
+            player.closeInventory();
+            return;
+        }
+
+        String strippedName = org.bukkit.ChatColor.stripColor(displayName);
+        PlotBorderStyle chosenStyle = null;
+        for (PlotBorderStyle style : PlotBorderStyle.values()) {
+            if (style.getDisplayName().equalsIgnoreCase(strippedName)) {
+                chosenStyle = style;
+                break;
+            }
+        }
+        if (chosenStyle == null) {
+            return;
+        }
+
+        boolean memberStyle = title.contains("Czlonkowie: ");
+        if (memberStyle) {
+            region.memberBorderStyleId = chosenStyle.getId();
+        } else {
+            region.visitorBorderStyleId = chosenStyle.getId();
+        }
+
+        savePlots();
+        player.sendMessage("§aUstawiono styl borderu §f" + chosenStyle.getDisplayName()
+                + " §adla " + (memberStyle ? "czlonkow" : "obcych") + ".");
+        scheduleBoundaryParticles(region, player);
+        openBorderStylePicker(region, player, memberStyle);
     }
 
     // === OBSŁUGA PANELU PUNKTÓW ===
@@ -2141,10 +2429,9 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     }
 
     public void stopParticles(ProtectedRegion region) {
-        // Zatrzymaj cząsteczki dla konkretnego regionu
         for (Player player : Bukkit.getOnlinePlayers()) {
-            ProtectedRegion currentRegion = getNearbyRegion(player.getLocation(), 10);
-            if (currentRegion != null && currentRegion.equals(region)) {
+            String activeRegionId = playerBoundaryRegions.get(player.getUniqueId());
+            if (activeRegionId != null && samePlotName(activeRegionId, region.plotName)) {
                 stopBoundaryParticles(player);
             }
         }
@@ -2153,18 +2440,14 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     @EventHandler
     public void onPlayerJoin(org.bukkit.event.player.PlayerJoinEvent event) {
         Player player = event.getPlayer();
-        // Sprawdź czy gracz jest bezpośrednio na działce
         ProtectedRegion region = getRegion(player.getLocation());
         if (region != null) {
-            // Gracz jest na działce - pokaż BossBar i granice
             showBossBar(region, player);
-            scheduleBoundaryParticles(region, player);
-        } else {
-            // Sprawdź czy jest w pobliżu (10 bloków) - tylko granice
-            region = getNearbyRegion(player.getLocation(), 10);
-            if (region != null) {
-                scheduleBoundaryParticles(region, player);
-            }
+        }
+
+        ProtectedRegion nearbyBoundary = getRegionNearBoundary(player.getLocation(), BORDER_TRIGGER_DISTANCE);
+        if (nearbyBoundary != null) {
+            scheduleBoundaryParticles(nearbyBoundary, player);
         }
     }
 
@@ -2372,6 +2655,8 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
         public boolean allowBeaconPlace = false;
         public boolean allowBeaconBreak = false;
         public boolean mobGriefing = false;  // Nowe pole - czy moby mogą niszczyć bloki
+        public String memberBorderStyleId = PlotBorderStyle.SPRING.getId();
+        public String visitorBorderStyleId = PlotBorderStyle.CLOUDY.getId();
 
         // Rynek działek
         public boolean isOnMarket = false;
@@ -2444,112 +2729,152 @@ public class DzialkaCommand implements CommandExecutor, Listener, TabCompleter {
     // === SYSTEM WYŚWIETLANIA GRANIC DZIAŁEK ===
     // Mapa przechowująca aktywne granice dla każdego gracza
     private final Map<UUID, BukkitRunnable> playerBoundaryTasks = new HashMap<>();
-    private final Map<UUID, Integer> playerParticleOffset = new HashMap<>();
+    private final Map<UUID, Long> playerBoundaryExpiry = new HashMap<>();
+    private final Map<UUID, String> playerBoundaryRegions = new HashMap<>();
 
     public void stopBoundaryParticles(Player player) {
         BukkitRunnable old = playerBoundaryTasks.remove(player.getUniqueId());
         if (old != null) {
             old.cancel();
         }
-        playerParticleOffset.remove(player.getUniqueId());
+        playerBoundaryExpiry.remove(player.getUniqueId());
+        playerBoundaryRegions.remove(player.getUniqueId());
     }
 
-    // ========================= NOWY SYSTEM GRANIC =========================
-    // Główna metoda do wyświetlania granic na określonej wysokości z płynną animacją
+    public void showBoundaryParticles(ProtectedRegion region, Player player) {
+        if (!player.isOnline() || region.center == null || region.center.getWorld() == null) {
+            return;
+        }
+        if (!player.getWorld().equals(region.center.getWorld())) {
+            return;
+        }
+
+        int baseY = player.getLocation().getBlockY();
+        int minY = Math.max(player.getWorld().getMinHeight(), baseY - BORDER_VERTICAL_RADIUS);
+        int maxY = Math.min(player.getWorld().getMaxHeight(), baseY + BORDER_VERTICAL_RADIUS);
+
+        for (int y = minY; y <= maxY; y++) {
+            showBoundaryParticles(region, player, y);
+        }
+    }
+
     public void showBoundaryParticles(ProtectedRegion region, Player player, int y) {
         World world = player.getWorld();
-        int step = 1; // co 1 blok – równa linia
+        PlotBorderStyle style = getBorderStyleForViewer(region, player);
+        Location viewerLocation = player.getLocation();
+        int step = 2;
 
-        // Góra i dół działki (oś X)
-        for (int x = region.getMinimumPoint().getBlockX();
-                x <= region.getMaximumPoint().getBlockX(); x += step) {
-
-            spawnFireCloud(player, new Location(world, x + 0.5, y,
-                    region.getMinimumPoint().getBlockZ() + 0.5)); // północ
-            spawnFireCloud(player, new Location(world, x + 0.5, y,
-                    region.getMaximumPoint().getBlockZ() + 0.5)); // południe
+        for (int x = region.minX; x <= region.maxX; x += step) {
+            spawnBoundaryPoint(player, style, viewerLocation, new Location(world, x + 0.5, y, region.minZ + 0.5));
+            spawnBoundaryPoint(player, style, viewerLocation, new Location(world, x + 0.5, y, region.maxZ + 0.5));
         }
 
-        // Lewa i prawa krawędź (oś Z)
-        for (int z = region.getMinimumPoint().getBlockZ();
-                z <= region.getMaximumPoint().getBlockZ(); z += step) {
-
-            spawnFireCloud(player, new Location(world,
-                    region.getMinimumPoint().getBlockX() + 0.5, y, z + 0.5)); // zachód
-            spawnFireCloud(player, new Location(world,
-                    region.getMaximumPoint().getBlockX() + 0.5, y, z + 0.5)); // wschód
+        for (int z = region.minZ; z <= region.maxZ; z += step) {
+            spawnBoundaryPoint(player, style, viewerLocation, new Location(world, region.minX + 0.5, y, z + 0.5));
+            spawnBoundaryPoint(player, style, viewerLocation, new Location(world, region.maxX + 0.5, y, z + 0.5));
         }
     }
 
-    // Metoda do cyklicznego wyświetlania granic na wielu poziomach z płynną animacją
-    public void scheduleBoundaryParticles(ProtectedRegion region, Player player) {
-        stopBoundaryParticles(player);
-        playerParticleOffset.put(player.getUniqueId(), 0);
+    private void spawnBoundaryPoint(Player player, PlotBorderStyle style, Location viewerLocation, Location point) {
+        if (point.distanceSquared(viewerLocation) > (BORDER_VISIBLE_RADIUS * BORDER_VISIBLE_RADIUS)) {
+            return;
+        }
+        spawnStyledBoundaryParticle(player, point, style);
+    }
 
-        final int minY = Math.max(region.minY, player.getWorld().getMinHeight() + 5);
-        final int maxY = Math.min(region.maxY, player.getWorld().getMaxHeight() - 5);
-        final int yStep = 12; // Zwiększony odstęp między poziomami dla mniejszego lagu
+    public void scheduleBoundaryParticles(ProtectedRegion region, Player player) {
+        UUID playerId = player.getUniqueId();
+        long expiresAt = System.currentTimeMillis() + (BORDER_PREVIEW_DURATION_TICKS * 50L);
+        String regionId = region.getId();
+
+        if (regionId.equalsIgnoreCase(playerBoundaryRegions.get(playerId)) && playerBoundaryTasks.containsKey(playerId)) {
+            playerBoundaryExpiry.put(playerId, expiresAt);
+            return;
+        }
+
+        stopBoundaryParticles(player);
+        playerBoundaryExpiry.put(playerId, expiresAt);
+        playerBoundaryRegions.put(playerId, regionId);
 
         BukkitRunnable task = new BukkitRunnable() {
             @Override
             public void run() {
                 if (!player.isOnline()) {
+                    stopBoundaryParticles(player);
                     cancel();
-                    playerBoundaryTasks.remove(player.getUniqueId());
-                    playerParticleOffset.remove(player.getUniqueId());
                     return;
                 }
 
-                // Sprawdź czy gracz nadal jest w promieniu 10 bloków od działki
-                ProtectedRegion nearby = getNearbyRegion(player.getLocation(), 10);
-                if (nearby == null || !nearby.equals(region)) {
+                Long expiry = playerBoundaryExpiry.get(playerId);
+                if (expiry == null || System.currentTimeMillis() > expiry) {
+                    stopBoundaryParticles(player);
                     cancel();
-                    playerBoundaryTasks.remove(player.getUniqueId());
-                    playerParticleOffset.remove(player.getUniqueId());
                     return;
                 }
 
-                // Pobierz i zaktualizuj offset dla płynnej animacji
-                int offset = playerParticleOffset.getOrDefault(player.getUniqueId(), 0);
-                playerParticleOffset.put(player.getUniqueId(), (offset + 1) % 20);
-
-                // Wyświetl granice tylko na wybranym poziomie Y (rotacja)
-                int currentYIndex = offset % Math.max(1, (maxY - minY) / yStep + 1);
-                int currentY = minY + (currentYIndex * yStep);
-
-                if (currentY <= maxY) {
-                    showBoundaryParticles(region, player, currentY);
+                ProtectedRegion nearby = getRegionNearBoundary(player.getLocation(), BORDER_TRIGGER_DISTANCE);
+                if (nearby == null || !samePlotName(nearby.plotName, region.plotName)) {
+                    return;
                 }
+
+                showBoundaryParticles(region, player);
             }
         };
-        // Uruchom co 3 ticki (~0.15 sekundy) dla płynniejszej animacji
-        task.runTaskTimer(plugin, 0L, 3L);
-        playerBoundaryTasks.put(player.getUniqueId(), task);
+
+        task.runTaskTimer(plugin, 0L, 6L);
+        playerBoundaryTasks.put(playerId, task);
     }
 
-    // ========================= PARTICLE PACK =========================
-    private void spawnSmoothFireParticles(Player player, Location loc) {
-        // Delikatne cząsteczki z mniejszą liczbą i rozproszeniem
-        double spread = 0.3;
-        int count = 2; // Zmniejszona liczba cząsteczek
-
-        // FLAME – ciepła mgiełka (mniej intensywna)
-        player.spawnParticle(Particle.FLAME, loc, count, spread, spread * 0.5, spread, 0.01);
-
-        // REDSTONE – pomarańczowa poświata (rzadziej)
-        if (Math.random() < 0.3) { // Tylko 30% szans na dodatkową cząsteczkę
-            player.spawnParticle(Particle.REDSTONE, loc, 1, spread * 0.4, spread * 0.4, spread * 0.4,
-                    new Particle.DustOptions(org.bukkit.Color.ORANGE, 0.3f));
+    private void spawnStyledBoundaryParticle(Player player, Location loc, PlotBorderStyle style) {
+        switch (style) {
+            case SPRING -> {
+                player.spawnParticle(Particle.VILLAGER_HAPPY, loc, 2, 0.12, 0.08, 0.12, 0.01);
+                player.spawnParticle(Particle.COMPOSTER, loc, 1, 0.08, 0.05, 0.08, 0.0);
+                spawnDust(player, loc, Color.fromRGB(120, 255, 120), 0.9f);
+            }
+            case CLOUDY -> {
+                player.spawnParticle(Particle.CLOUD, loc, 2, 0.18, 0.08, 0.18, 0.01);
+                player.spawnParticle(Particle.SNOWBALL, loc, 1, 0.08, 0.05, 0.08, 0.0);
+            }
+            case NATURE -> {
+                player.spawnParticle(Particle.COMPOSTER, loc, 2, 0.12, 0.08, 0.12, 0.0);
+                player.spawnParticle(Particle.WAX_ON, loc, 1, 0.10, 0.05, 0.10, 0.0);
+                spawnDust(player, loc, Color.fromRGB(70, 190, 90), 1.0f);
+            }
+            case ARCANE -> {
+                player.spawnParticle(Particle.ENCHANTMENT_TABLE, loc, 2, 0.12, 0.08, 0.12, 0.0);
+                player.spawnParticle(Particle.END_ROD, loc, 1, 0.08, 0.05, 0.08, 0.0);
+            }
+            case CRYSTAL -> {
+                player.spawnParticle(Particle.GLOW, loc, 2, 0.10, 0.05, 0.10, 0.0);
+                player.spawnParticle(Particle.CRIT_MAGIC, loc, 1, 0.10, 0.05, 0.10, 0.0);
+                spawnDust(player, loc, Color.fromRGB(110, 235, 255), 1.1f);
+            }
+            case FROST -> {
+                player.spawnParticle(Particle.SNOWFLAKE, loc, 2, 0.12, 0.08, 0.12, 0.0);
+                player.spawnParticle(Particle.CLOUD, loc, 1, 0.10, 0.05, 0.10, 0.01);
+                spawnDust(player, loc, Color.fromRGB(180, 235, 255), 0.9f);
+            }
+            case GOLD -> {
+                player.spawnParticle(Particle.TOTEM, loc, 1, 0.10, 0.05, 0.10, 0.0);
+                player.spawnParticle(Particle.WAX_ON, loc, 1, 0.10, 0.05, 0.10, 0.0);
+                spawnDust(player, loc, Color.fromRGB(255, 215, 64), 1.0f);
+            }
+            case SHADOW -> {
+                player.spawnParticle(Particle.SMOKE_NORMAL, loc, 2, 0.15, 0.08, 0.15, 0.01);
+                player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 1, 0.08, 0.05, 0.08, 0.0);
+                spawnDust(player, loc, Color.fromRGB(120, 120, 120), 0.7f);
+            }
         }
     }
 
-    private void spawnFireCloud(Player player, Location loc) {
-        player.spawnParticle(Particle.FLAME, loc, 2, 0.15, 0.10, 0.15, 0.01);
-        player.spawnParticle(Particle.SOUL_FIRE_FLAME, loc, 1, 0.10, 0.05, 0.10, 0.01);
-        player.spawnParticle(
-                Particle.REDSTONE, loc, 1, 0.10, 0.05, 0.10,
-                new Particle.DustOptions(Color.RED, 1.2f)
-        );
+    private void spawnDust(Player player, Location loc, Color color, float size) {
+        player.spawnParticle(Particle.REDSTONE, loc, 1, 0.08, 0.05, 0.08, new Particle.DustOptions(color, size));
+    }
+
+    private void spawnSmoothFireParticles(Player player, Location loc) {
+        player.spawnParticle(Particle.CLOUD, loc, 1, 0.10, 0.05, 0.10, 0.01);
+        spawnDust(player, loc, Color.fromRGB(255, 180, 80), 0.5f);
     }
 
     // === BRAKUJĄCE METODY - IMPLEMENTACJE ZASTĘPCZE ===

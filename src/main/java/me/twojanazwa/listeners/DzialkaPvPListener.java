@@ -63,9 +63,9 @@ public class DzialkaPvPListener implements Listener {
         ProtectedRegion currentRegion = dzialkaCommand.getRegion(to);
         ProtectedRegion previousRegion = dzialkaCommand.getRegion(from);
 
-        // Sprawdź czy gracz jest w pobliżu działki (promień 10 bloków)
-        ProtectedRegion nearbyRegion = dzialkaCommand.getNearbyRegion(to, 10);
-        ProtectedRegion previousNearbyRegion = dzialkaCommand.getNearbyRegion(from, 10);
+        // Sprawdź czy gracz jest blisko realnej granicy działki (promień 10 bloków)
+        ProtectedRegion nearbyRegion = dzialkaCommand.getRegionNearBoundary(to, 10);
+        ProtectedRegion previousNearbyRegion = dzialkaCommand.getRegionNearBoundary(from, 10);
 
         // === OBSŁUGA WEJŚCIA/WYJŚCIA Z DZIAŁKI ===
         if (!regionsAreEqual(currentRegion, previousRegion)) {
@@ -119,6 +119,10 @@ public class DzialkaPvPListener implements Listener {
             player.spigot().sendMessage(ChatMessageType.ACTION_BAR,
                     new TextComponent("§7Opuściłeś działkę: §e" + previousRegion.plotName + " §7(granice widoczne)"));
             dzialkaCommand.scheduleBoundaryParticles(previousRegion, player);
+        }
+
+        if (nearbyRegion != null) {
+            dzialkaCommand.scheduleBoundaryParticles(nearbyRegion, player);
         }
 
         // === ZAWSZE AKTUALIZUJ BOSSBAR ===
